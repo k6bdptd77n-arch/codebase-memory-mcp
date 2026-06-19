@@ -18,6 +18,7 @@ MEM_END="<!-- autoclaude:memory:end -->"
 EPISODIC_DST="$CLAUDE_DIR/hooks/episodic_logger.py"
 MEMGUARD_DST="$CLAUDE_DIR/hooks/memory_guard.py"
 PROMPTUP_DST="$CLAUDE_DIR/hooks/prompt_upgrade.py"
+ROUTER_DST="$CLAUDE_DIR/hooks/model_router.py"
 
 strip_block() {  # remove a managed block ($1=begin $2=end) from CLAUDE.md
   [ -f "$CLAUDEMD" ] || return 0
@@ -29,9 +30,9 @@ strip_block() {  # remove a managed block ($1=begin $2=end) from CLAUDE.md
 if [ "${1:-}" = "--uninstall" ]; then
   strip_block "$BEGIN" "$END"
   strip_block "$MEM_BEGIN" "$MEM_END"
-  rm -f "$HOOK_DST" "$EPISODIC_DST" "$MEMGUARD_DST" "$PROMPTUP_DST"
-  rm -rf "$CLAUDE_DIR/skills/memory-prune"
-  echo "autoclaude removed (economy + memory blocks, hooks, /memory-prune). Drop the hook entries from settings.json manually if set."
+  rm -f "$HOOK_DST" "$EPISODIC_DST" "$MEMGUARD_DST" "$PROMPTUP_DST" "$ROUTER_DST"
+  rm -rf "$CLAUDE_DIR/skills/memory-prune" "$CLAUDE_DIR/skills/ultraplan" "$CLAUDE_DIR/skills/ultrathink"
+  echo "autoclaude removed (economy + memory blocks, hooks, /memory-prune, /ultraplan, /ultrathink). Drop the hook entries from settings.json manually if set."
   exit 0
 fi
 
@@ -83,7 +84,8 @@ PY
 cp "$SRC/.claude/hooks/episodic_logger.py" "$EPISODIC_DST"; chmod +x "$EPISODIC_DST"
 cp "$SRC/.claude/hooks/memory_guard.py" "$MEMGUARD_DST"; chmod +x "$MEMGUARD_DST"
 cp "$SRC/.claude/hooks/prompt_upgrade.py" "$PROMPTUP_DST"; chmod +x "$PROMPTUP_DST"
-echo "✓ episodic-logger + memory-guard + prompt-upgrade hooks installed"
+cp "$SRC/.claude/hooks/model_router.py" "$ROUTER_DST"; chmod +x "$ROUTER_DST"
+echo "✓ episodic-logger + memory-guard + prompt-upgrade + model-router hooks installed"
 
 # 2d) wire memory hooks into ~/.claude/settings.json (idempotent)
 SETTINGS="$CLAUDE_DIR/settings.json" python3 - <<'PY'
@@ -116,6 +118,10 @@ ensure("UserPromptSubmit", "prompt_upgrade.py", {
     "matcher": "", "hooks": [{"type": "command",
         "command": 'python3 "$HOME/.claude/hooks/prompt_upgrade.py"',
         "timeout": 10}]})
+ensure("UserPromptSubmit", "model_router.py", {
+    "matcher": "", "hooks": [{"type": "command",
+        "command": 'python3 "$HOME/.claude/hooks/model_router.py"',
+        "timeout": 10}]})
 
 with open(path, "w") as fh:
     json.dump(data, fh, indent=2, ensure_ascii=False); fh.write("\n")
@@ -128,6 +134,13 @@ cp "$SRC/skills-local/memory-prune/SKILL.md" "$SKILL_DST/SKILL.md"
 cp "$SRC/skills-local/memory-prune/scan.py" "$SKILL_DST/scan.py"
 chmod +x "$SKILL_DST/scan.py"
 echo "✓ /memory-prune skill installed at $SKILL_DST"
+
+# 2f) ultraplan + ultrathink skills -> global skills dir
+for s in ultraplan ultrathink; do
+  mkdir -p "$CLAUDE_DIR/skills/$s"
+  cp "$SRC/skills-local/$s/SKILL.md" "$CLAUDE_DIR/skills/$s/SKILL.md"
+  echo "✓ /$s skill installed at $CLAUDE_DIR/skills/$s"
+done
 
 # 3) .claudeignore into target project (arg or cwd)
 TARGET="${1:-$PWD}"
