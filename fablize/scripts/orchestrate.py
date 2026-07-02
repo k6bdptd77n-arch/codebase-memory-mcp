@@ -121,9 +121,17 @@ def build_prompt(plan, story):
     )
 
 
-def agent_cmd(claude_cmd, prompt, permission_mode, agent_args=()):
-    """agent_args: extra CLI arguments appended verbatim (e.g. --model / --mcp-config
-    from a crew role config) — the orchestrator stays agnostic about their meaning."""
+def agent_cmd(claude_cmd, prompt, permission_mode, agent_args=(), style="claude"):
+    """Build the headless agent command. agent_args are appended verbatim (e.g. --model /
+    --mcp-config from a crew role config). `style` adapts the invocation to other coding
+    CLIs — the worktree isolation and the review/merge loop stay identical:
+      claude → claude -p <prompt> --permission-mode <mode>
+      codex  → codex exec --full-auto <prompt>
+      aider  → aider --yes-always --message <prompt>"""
+    if style == "codex":
+        return [claude_cmd, "exec", "--full-auto", prompt, *agent_args]
+    if style == "aider":
+        return [claude_cmd, "--yes-always", "--message", prompt, *agent_args]
     return [claude_cmd, "-p", prompt, "--permission-mode", permission_mode, *agent_args]
 
 
@@ -164,7 +172,7 @@ def run_story(plan, story, a):
     wt = WORKTREES / story["id"]
     logf = LOGS / f"{story['id']}.log"
     add = worktree_add_cmd(story)
-    cmd = agent_cmd(a.claude_cmd, build_prompt(plan, story), a.permission_mode, a.agent_arg)
+    cmd = agent_cmd(a.claude_cmd, build_prompt(plan, story), a.permission_mode, a.agent_arg, a.agent_style)
     if a.dry_run:  # a dry run must leave the tree untouched — no dirs, no worktrees
         print(f"[dry-run] {story['id']}: {' '.join(add)}")
         print(f"[dry-run] {story['id']}: (cwd={wt}) {cmd[0]} -p '<handoff prompt>' "
@@ -203,7 +211,9 @@ def cmd_run(a):
     if not stories:
         print("fablize orchestrator: nothing pending to run.")
         return
-    log("orchestrator_run", count=len(stories), parallel=a.parallel, dry_run=a.dry_run)
+    if a.agent_style != "claude" and a.claude_cmd == "claude":
+        a.claude_cmd = a.agent_style  # style implies its own binary unless overridden
+    log("orchestrator_run", count=len(stories), parallel=a.parallel, dry_run=a.dry_run, style=a.agent_style)
     with ThreadPoolExecutor(max_workers=max(1, a.parallel)) as pool:
         results = list(pool.map(lambda s: run_story(plan, s, a), stories))
     if a.dry_run:
@@ -239,6 +249,7 @@ def main():
             s.add_argument("--claude-cmd", default="claude")
             s.add_argument("--permission-mode", default="acceptEdits")
             s.add_argument("--agent-arg", action="append", default=[])
+            s.add_argument("--agent-style", default="claude", choices=["claude", "codex", "aider"])
     a = p.parse_args()
     {"plan": cmd_plan, "run": cmd_run, "clean": cmd_clean}[a.cmd](a)
 

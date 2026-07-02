@@ -33,7 +33,7 @@
     <button class="tab" data-tab="plan">План</button>
     <button class="tab" data-tab="brain">Мозг</button>
     <button class="tab" data-tab="metrics">Метрики</button>
-    <button class="tab" data-tab="crew">Экипаж</button>
+    <button class="tab" data-tab="settings">Настройки</button>
     <button class="tab" data-tab="terminal">Терминал</button>
   </nav>
 
@@ -113,14 +113,37 @@
       </div>
     </section>
 
-    <!-- Crew: agent roles -->
-    <section id="view-crew" class="view">
-      <div class="crew-top">
-        <div class="pane-title">Экипаж — кто чем занимается и с какими инструментами</div>
-        <span id="crew-status" class="status-line"></span>
-        <button id="crew-save" class="btn amber small" disabled>Сохранить</button>
+    <!-- Settings (Cursor-style: left nav + sections) -->
+    <section id="view-settings" class="view">
+      <div class="settings-grid">
+        <nav id="settings-nav">
+          <div class="snav-title">Настройки</div>
+          <button class="snav active" data-sec="crew">Экипаж</button>
+          <button class="snav" data-sec="models">Модели и провайдеры</button>
+          <button class="snav" data-sec="mcp">MCP-серверы</button>
+          <div class="snav-footer">
+            <span id="crew-status" class="status-line"></span>
+            <button id="crew-save" class="btn amber small" disabled>Сохранить</button>
+          </div>
+        </nav>
+        <div id="settings-body">
+          <div id="sec-crew" class="sec active">
+            <div class="sec-head">Экипаж</div>
+            <div class="sec-sub">Кто чем занимается и с какими инструментами. Применяется к следующему запуску агента.</div>
+            <div id="crew-cards" class="crew-cards"></div>
+          </div>
+          <div id="sec-models" class="sec">
+            <div class="sec-head">Модели и провайдеры</div>
+            <div class="sec-sub">Внешние провайдеры доступны думающим ролям (Планировщик, Мозг). Рука всегда работает через CLI-агента в worktree — её модель задаётся в карточке роли.</div>
+            <div id="provider-cards"></div>
+          </div>
+          <div id="sec-mcp" class="sec">
+            <div class="sec-head">MCP-серверы</div>
+            <div class="sec-sub">Список серверов из конфигурации claude. Вкл/выкл для конкретной роли — в разделе «Экипаж». Добавить новый: <code>claude mcp add &lt;имя&gt; &lt;команда&gt;</code> в терминале.</div>
+            <div id="mcp-list"></div>
+          </div>
+        </div>
       </div>
-      <div id="crew-cards" class="crew-cards"></div>
     </section>
 
     <!-- Terminal -->
@@ -159,7 +182,7 @@
   <script src="views/plan.js"></script>
   <script src="views/brain.js"></script>
   <script src="views/metrics.js"></script>
-  <script src="views/crew.js"></script>
+  <script src="views/settings.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

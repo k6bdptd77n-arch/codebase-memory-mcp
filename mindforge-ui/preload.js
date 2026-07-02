@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld("mf", {
   crewGet: () => ipcRenderer.invoke("crew-get"),
   crewSave: (cfg) => ipcRenderer.invoke("crew-save", cfg),
   crewInventory: () => ipcRenderer.invoke("crew-inventory"),
+  ollamaModels: () => ipcRenderer.invoke("ollama-models"),
+  cliAvailable: (cmd) => ipcRenderer.invoke("cli-available", cmd),
 
   // native confirmation for destructive actions
   confirm: (title, detail) => ipcRenderer.invoke("confirm", { title, detail }),

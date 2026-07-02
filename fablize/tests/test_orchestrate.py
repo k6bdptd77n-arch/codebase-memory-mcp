@@ -134,6 +134,18 @@ class OrchestrateTests(Base):
         self.assertEqual(cmd[-3:], ["--model", "haiku", "--strict-mcp-config"])
         self.assertEqual(cmd[:2], ["claude", "-p"])
 
+    def test_agent_style_adapters(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("orch3", ORCH)
+        orch = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(orch)
+        self.assertEqual(orch.agent_cmd("codex", "task", "acceptEdits", style="codex"),
+                         ["codex", "exec", "--full-auto", "task"])
+        self.assertEqual(orch.agent_cmd("aider", "task", "acceptEdits", style="aider"),
+                         ["aider", "--yes-always", "--message", "task"])
+        # claude stays the default shape
+        self.assertIn("--permission-mode", orch.agent_cmd("claude", "task", "acceptEdits"))
+
     @unittest.skipUnless(HAS_GIT, "git not available")
     def test_end_to_end_with_stub_agent(self):
         subprocess.run(["git", "init", "-q"], cwd=str(self.repo), env=self.env, capture_output=True)
