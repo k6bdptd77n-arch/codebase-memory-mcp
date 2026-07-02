@@ -68,3 +68,7 @@ __pycache__/
 
 # fablize runtime state (per-project ledger/spec/goals/brain — local by default)
 .fablize/
+
+# Virtualenvs
+.venv/
+crew/.venv/

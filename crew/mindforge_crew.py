@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""MindForge × crewAI — the orchestration brain over the fablize engines.
+
+Division of labor (deliberate):
+  - crewAI agents THINK: the Planner decomposes a feature into disjoint-file stories;
+    the Reviewer reads a story's diff + agent log and issues a verdict. Small prompts,
+    cheap model (default Haiku via LiteLLM naming; override MINDFORGE_CREW_MODEL,
+    e.g. "ollama/llama3.1" for a free local planner).
+  - Headless Claude Code agents in git worktrees DO: real coding on the subscription,
+    inside the permission harness (orchestrate.py seeds the allowlist).
+  - Plain Python DECIDES the deterministic parts: running stories, checkpoints, merges —
+    an LLM adds nothing there, so no tokens are spent on it.
+
+Usage:
+  python3 crew/mindforge_crew.py --check                # wiring smoke test (no API calls)
+  python3 crew/mindforge_crew.py plan  "feature ..."    # Planner → goals.py plan
+  python3 crew/mindforge_crew.py cycle                  # run+review+merge every pending story
+  python3 crew/mindforge_crew.py cycle --dry-run        # walk the loop without agents/merges
+
+Requires: pip install -r crew/requirements.txt, plus ANTHROPIC_API_KEY (or an Ollama model).
+The fablize side needs nothing new — mindforge_tools.py is stdlib.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mindforge_tools as mt  # noqa: E402  (stdlib boundary — safe to import always)
+
+try:
+    from crewai import Agent, Crew, Task
+    from crewai.tools import tool
+except ImportError:
+    print("crewai is not installed. Set it up once:\n"
+          "  python3 -m venv crew/.venv && crew/.venv/bin/pip install -r crew/requirements.txt\n"
+          "then run this script with crew/.venv/bin/python3.")
+    sys.exit(1)
+
+MODEL = os.environ.get("MINDFORGE_CREW_MODEL", "anthropic/claude-haiku-4-5-20251001")
+
+
+# --- tools exposed to the LLM agents (thin: they only see fablize engines) -----
+
+@tool("brain_recall")
+def t_brain_recall(query: str) -> str:
+    """Recall prior facts, lessons, episodes and failure warnings about a topic
+    from the project's persistent memory. Call before planning."""
+    return mt.brain_recall(query)
+
+
+@tool("goals_create")
+def t_goals_create(brief: str, stories_json: str) -> str:
+    """Create the story plan. stories_json is a JSON array of 'title::objective'
+    strings. Each objective MUST name the exact files the story may touch, and the
+    file sets of different stories MUST be disjoint (that is what makes parallel
+    worktree agents merge cleanly)."""
+    try:
+        stories = json.loads(stories_json)
+        assert isinstance(stories, list) and all(isinstance(s, str) for s in stories)
+    except (ValueError, AssertionError):
+        return "stories_json must be a JSON array of 'title::objective' strings."
+    return mt.goals_create(brief, stories, force=True)
+
+
+@tool("goals_status")
+def t_goals_status() -> str:
+    """Show the current plan and each story's status."""
+    return mt.goals_status()
+
+
+def planner_agent():
+    return Agent(
+        role="Build planner",
+        goal="Decompose a feature into the smallest set of sequential-safe stories with "
+             "strictly disjoint file scopes, informed by the project's memory.",
+        backstory="You plan work for parallel headless coding agents that each own one "
+                  "git worktree. Overlapping file scopes cause merge conflicts; vague "
+                  "objectives cause scope creep. You write objectives that name exact "
+                  "files and end with the verification command.",
+        tools=[t_brain_recall, t_goals_create, t_goals_status],
+        llm=MODEL, verbose=True,
+    )
+
+
+def reviewer_agent():
+    return Agent(
+        role="Story reviewer",
+        goal="Decide from evidence whether a story is complete or failed.",
+        backstory="You review a coding agent's branch diff and log. You trust commands "
+                  "and diffs, not claims. Scope violations or missing tests mean FAILED.",
+        tools=[], llm=MODEL, verbose=True,
+    )
+
+
+def plan(feature: str) -> str:
+    crew = Crew(agents=[planner_agent()], tasks=[Task(
+        description=(
+            "Plan this feature for the MindForge repo. First call brain_recall on the "
+            "feature topic. Then create 1-4 stories via goals_create (JSON array of "
+            f"'title::objective' strings), disjoint file scopes. Feature: {feature}"),
+        expected_output="The goals_create output confirming the plan, then one line per "
+                        "story explaining its file scope.",
+        agent=planner_agent(),
+    )])
+    return str(crew.kickoff())
+
+
+def review(story_id: str) -> str:
+    evidence = mt.review_story(story_id)
+    crew = Crew(agents=[reviewer_agent()], tasks=[Task(
+        description=(
+            f"Review story {story_id}. Evidence follows. Verdict rules: commits exist, "
+            "diff stays within the story's file scope, log shows tests were RUN and "
+            "passed → COMPLETE; anything else → FAILED with the reason.\n\n" + evidence),
+        expected_output="One line: 'VERDICT: COMPLETE — <reason>' or 'VERDICT: FAILED — <reason>'.",
+        agent=reviewer_agent(),
+    )])
+    return str(crew.kickoff())
+
+
+def cycle(dry_run: bool = False) -> None:
+    """run → review → checkpoint/merge for every pending story; reflect at the end."""
+    status = mt.goals_status()
+    print(status)
+    pending = re.findall(r"(G\d+) \[pending\]", status)
+    if not pending:
+        print("cycle: nothing pending.")
+        return
+    results = []
+    for sid in pending:
+        print(f"\n--- {sid}: running worktree agent…")
+        if dry_run:
+            print(f"[dry-run] would run_story({sid}), review, checkpoint, merge")
+            continue
+        print(mt.run_story(sid))
+        verdict = review(sid)
+        print(verdict)
+        mt.goals_next()
+        if "VERDICT: COMPLETE" in verdict:
+            gate = mt.run_verification()
+            tail = gate.splitlines()[-1] if gate else ""
+            mt.goals_checkpoint(sid, "complete", verdict[:200],
+                                verify_cmd="python3 -m pytest fablize/tests/ -q",
+                                verify_evidence=tail)
+            print(mt.merge_story(sid))
+            results.append((sid, "merged"))
+        else:
+            print(mt.goals_checkpoint(sid, "failed", verdict[:200]))
+            results.append((sid, "failed"))
+    if not dry_run and results:
+        mt.brain_reflect(
+            trace="crewAI cycle: " + ", ".join(f"{s}={r}" for s, r in results),
+            lesson="", worked="crew-reviewed stories merged only on evidence")
+
+
+def check() -> None:
+    """Wiring smoke test: construct agents + tools, no LLM calls."""
+    p, r = planner_agent(), reviewer_agent()
+    assert p.tools and len(p.tools) == 3, "planner tools missing"
+    assert callable(mt.run_story) and callable(mt.merge_story)
+    probe = mt.goals_status()
+    print(f"crew wiring OK — model={MODEL}, planner tools={len(p.tools)}, "
+          f"reviewer={r.role!r}, goals engine reachable={'fablize' in probe}")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="mindforge_crew.py")
+    ap.add_argument("--check", action="store_true")
+    sub = ap.add_subparsers(dest="cmd")
+    pl = sub.add_parser("plan"); pl.add_argument("feature")
+    cy = sub.add_parser("cycle"); cy.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args()
+    if a.check:
+        check()
+    elif a.cmd == "plan":
+        print(plan(a.feature))
+    elif a.cmd == "cycle":
+        cycle(dry_run=a.dry_run)
+    else:
+        ap.print_help()
+
+
+if __name__ == "__main__":
+    main()
