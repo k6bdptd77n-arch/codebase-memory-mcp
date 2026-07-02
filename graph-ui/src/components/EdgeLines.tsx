@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import type { GraphNode, GraphEdge } from "../lib/types";
 
@@ -126,6 +126,11 @@ export function EdgeLines({
     );
     return geo;
   }, [nodes, edges, highlightedIds, targetNodes]);
+
+  // R3F only disposes a prop-supplied geometry on unmount, not when it is swapped — and this memo
+  // rebuilds on every selection (highlightedIds). Without this, each rebuild orphans the prior
+  // geometry's GPU buffers (a continuous leak during use). Dispose the previous one explicitly.
+  useEffect(() => () => geometry.dispose(), [geometry]);
 
   return (
     <lineSegments geometry={geometry}>

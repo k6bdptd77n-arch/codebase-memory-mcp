@@ -125,26 +125,35 @@ else
     exit 1
 fi
 
-# Checksum verification
+# Checksum verification — best-effort but LOUD when skipped (never silently install unverified).
+# Fetch with the same curl/wget fallback used for the binary, so a wget-only host still verifies.
 CHECKSUM_URL="${CBM_DOWNLOAD_URL}/checksums.txt"
-if curl -fsSL -o "$DLDIR/checksums.txt" "$CHECKSUM_URL" 2>/dev/null; then
-    EXPECTED=$(grep "$ARCHIVE" "$DLDIR/checksums.txt" | awk '{print $1}')
-    if [ -n "$EXPECTED" ]; then
-        if command -v sha256sum &>/dev/null; then
-            ACTUAL=$(sha256sum "$DLDIR/$ARCHIVE" | awk '{print $1}')
-        elif command -v shasum &>/dev/null; then
-            ACTUAL=$(shasum -a 256 "$DLDIR/$ARCHIVE" | awk '{print $1}')
-        else
-            ACTUAL=""
-        fi
-        if [ -n "$ACTUAL" ] && [ "$EXPECTED" != "$ACTUAL" ]; then
-            echo "error: CHECKSUM MISMATCH — download may be corrupted!" >&2
-            echo "  expected: $EXPECTED" >&2
-            echo "  actual:   $ACTUAL" >&2
-            exit 1
-        elif [ -n "$ACTUAL" ]; then
-            echo "Checksum verified."
-        fi
+if command -v curl &>/dev/null; then
+    curl -fsSL -o "$DLDIR/checksums.txt" "$CHECKSUM_URL" 2>/dev/null || true
+elif command -v wget &>/dev/null; then
+    wget -qO "$DLDIR/checksums.txt" "$CHECKSUM_URL" 2>/dev/null || true
+fi
+EXPECTED=""
+[ -f "$DLDIR/checksums.txt" ] && EXPECTED=$(grep "$ARCHIVE" "$DLDIR/checksums.txt" | awk '{print $1}')
+if [ -z "$EXPECTED" ]; then
+    echo "warning: checksum NOT verified (checksums.txt unavailable) — proceeding unverified." >&2
+else
+    if command -v sha256sum &>/dev/null; then
+        ACTUAL=$(sha256sum "$DLDIR/$ARCHIVE" | awk '{print $1}')
+    elif command -v shasum &>/dev/null; then
+        ACTUAL=$(shasum -a 256 "$DLDIR/$ARCHIVE" | awk '{print $1}')
+    else
+        ACTUAL=""
+    fi
+    if [ -z "$ACTUAL" ]; then
+        echo "warning: checksum NOT verified (no sha256sum/shasum tool) — proceeding unverified." >&2
+    elif [ "$EXPECTED" != "$ACTUAL" ]; then
+        echo "error: CHECKSUM MISMATCH — download may be corrupted!" >&2
+        echo "  expected: $EXPECTED" >&2
+        echo "  actual:   $ACTUAL" >&2
+        exit 1
+    else
+        echo "Checksum verified."
     fi
 fi
 

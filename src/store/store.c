@@ -903,6 +903,7 @@ int cbm_store_dump_to_file(cbm_store_t *s, const char *dest_path) {
     int rc = sqlite3_open(tmp_path, &dest_db);
     if (rc != SQLITE_OK) {
         store_set_error(s, "dump: cannot open temp file");
+        sqlite3_close(dest_db); /* open allocates a handle even on failure (cf. store.c:631) */
         return CBM_STORE_ERR;
     }
 
@@ -3872,7 +3873,11 @@ static void dir_add_child(char ***children, int *child_count, int *child_cap, co
     }
     if (*child_count >= *child_cap) {
         *child_cap = *child_cap ? *child_cap * PAIR_LEN : ST_INIT_CAP_4;
-        *children = realloc(*children, *child_cap * sizeof(char *));
+        char **tmp = realloc(*children, *child_cap * sizeof(char *));
+        if (!tmp) {
+            return; /* OOM: keep the old buffer intact rather than leak it and NULL-deref below */
+        }
+        *children = tmp;
     }
     (*children)[(*child_count)++] = heap_strdup(child);
 }

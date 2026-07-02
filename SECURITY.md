@@ -65,7 +65,7 @@ Releases are created as **drafts** (invisible to users) and only published after
 
 1. **SLSA build provenance** — cryptographic attestation proving each binary was built by GitHub Actions from this repository
 2. **Sigstore cosign signing** — keyless digital signatures verifiable by anyone
-3. **SBOM** — Software Bill of Materials (CycloneDX) listing all vendored dependencies
+3. **SBOM** — Software Bill of Materials (SPDX-2.3) listing all vendored dependencies
 4. **SHA-256 checksums** — published with every release
 5. **VirusTotal scanning** — all binaries scanned by 70+ antivirus engines (zero-tolerance: any detection blocks the release)
 6. **OpenSSF Scorecard** — repository security health score
@@ -103,5 +103,5 @@ sha256sum -c checksums.txt
 
 | Version | Supported |
 |---------|-----------|
-| 0.5.x   | Yes       |
-| < 0.5   | No (Go codebase, superseded by C rewrite) |
+| 0.8.x   | Yes       |
+| < 0.8   | No (superseded; upgrade to the current 0.8.x line) |

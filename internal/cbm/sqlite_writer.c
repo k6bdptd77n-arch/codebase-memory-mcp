@@ -570,6 +570,10 @@ static int build_interior_cell(const PageRef *child, bool is_index, uint8_t *cel
     }
     int clen = BTREE_PTR_SIZE + child->sep_cell_len;
     uint8_t *data = (uint8_t *)malloc(clen);
+    if (!data) {
+        *out_heap = NULL; /* OOM: signal failure (len 0) instead of dereferencing NULL */
+        return 0;
+    }
     put_u32(data, child->page_num);
     memcpy(data + 4, child->sep_cell, child->sep_cell_len);
     *out_heap = data;
@@ -640,6 +644,9 @@ static void fill_interior_page(uint8_t *page, const PageRef *children, int child
         uint8_t tbuf[INTERIOR_CELL_BUF];
         uint8_t *heap_cell = NULL;
         int clen = build_interior_cell(&children[*idx], is_index, tbuf, &heap_cell);
+        if (clen == 0) {
+            break; /* OOM in cell build (a valid interior cell is always > 0) — stop, don't write junk */
+        }
         uint8_t *cell_data = heap_cell ? heap_cell : tbuf;
 
         int available = *content_offset - *ptr_offset - CELL_PTR_SIZE;
@@ -1224,6 +1231,9 @@ static bool pb_promote_and_flush(PageBuilder *pb, uint8_t **cells, int *cell_len
     }
     pb->leaves[pb->leaf_count].max_key = 0;
     pb->leaves[pb->leaf_count].sep_cell = (uint8_t *)malloc(cell_lens[prev_idx]);
+    if (!pb->leaves[pb->leaf_count].sep_cell) {
+        return false; /* OOM: caller already handles a false return from this path */
+    }
     memcpy(pb->leaves[pb->leaf_count].sep_cell, cells[prev_idx], cell_lens[prev_idx]);
     pb->leaves[pb->leaf_count].sep_cell_len = cell_lens[prev_idx];
 

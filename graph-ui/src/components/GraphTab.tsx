@@ -51,7 +51,7 @@ export function GraphTab({ project }: GraphTabProps) {
     for (const lp of data.linked_projects ?? []) {
       for (const n of lp.nodes) labels.add(n.label);
       for (const e of lp.edges) types.add(e.type);
-      for (const e of lp.cross_edges) types.add(e.type);
+      for (const e of lp.cross_edges ?? []) types.add(e.type);
     }
     setEnabledLabels(labels);
     setEnabledEdgeTypes(types);
@@ -77,7 +77,7 @@ export function GraphTab({ project }: GraphTabProps) {
         (e) =>
           enabledEdgeTypes.has(e.type) && lpIds.has(e.source) && lpIds.has(e.target),
       );
-      const crossEdges = lp.cross_edges.filter(
+      const crossEdges = (lp.cross_edges ?? []).filter(
         (e) =>
           enabledEdgeTypes.has(e.type) && nodeIds.has(e.source) && lpIds.has(e.target),
       );
@@ -160,7 +160,7 @@ export function GraphTab({ project }: GraphTabProps) {
     for (const lp of data.linked_projects ?? []) {
       for (const n of lp.nodes) labels.add(n.label);
       for (const e of lp.edges) types.add(e.type);
-      for (const e of lp.cross_edges) types.add(e.type);
+      for (const e of lp.cross_edges ?? []) types.add(e.type);
     }
     setEnabledLabels(labels);
     setEnabledEdgeTypes(types);

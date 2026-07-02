@@ -23,7 +23,7 @@ export interface LinkedProject {
   nodes: GraphNode[];
   edges: GraphEdge[];
   offset: { x: number; y: number; z: number };
-  cross_edges: GraphEdge[];
+  cross_edges?: GraphEdge[];
 }
 
 export interface GraphData {

@@ -10,7 +10,10 @@ set -euo pipefail
 
 SKILLS=(skill-creator mcp-builder webapp-testing docx pdf pptx xlsx)
 DST="$HOME/.claude/skills"
-CACHE="${ANTHROPIC_SKILLS_CACHE:-/tmp/anthropic-skills}"
+# Per-user cache, NOT a predictable world-writable /tmp path: a shared /tmp/anthropic-skills lets
+# any other local user pre-seed a poisoned skill (the skip-if-exists check would then copy it into
+# every future Claude Code session — code/instruction injection).
+CACHE="${ANTHROPIC_SKILLS_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/anthropic-skills}"
 REPO="https://github.com/anthropics/skills"
 
 command -v git >/dev/null || { echo "! git required"; exit 1; }
@@ -18,7 +21,7 @@ command -v git >/dev/null || { echo "! git required"; exit 1; }
 # Sparse, shallow checkout of just the skill folders we want — not the whole repo.
 if [ ! -d "$CACHE/skills" ]; then
   echo "• fetching ${#SKILLS[@]} skills (sparse) -> $CACHE"
-  rm -rf "$CACHE"
+  rm -rf "$CACHE"; mkdir -p "$(dirname "$CACHE")"
   git clone --no-checkout --depth 1 --filter=blob:none "$REPO" "$CACHE" >/dev/null 2>&1
   git -C "$CACHE" sparse-checkout init --cone >/dev/null 2>&1
   git -C "$CACHE" sparse-checkout set "${SKILLS[@]/#/skills/}" >/dev/null 2>&1
