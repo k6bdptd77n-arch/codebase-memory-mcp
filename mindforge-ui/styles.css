@@ -355,3 +355,50 @@ main { position: relative; height: calc(100% - 52px - 38px - 30px); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ── theme: Cursor (нейтральный графит, системный шрифт, синий акцент) ─────
+   Токенная подмена: те же семантические роли, но палитра и типографика как в
+   Cursor Settings — без свечения, без «космоса», радиусы меньше. */
+body.theme-cursor {
+  --space:  #1A1A1A;
+  --panel:  #202021;
+  --panel2: #28282A;
+  --line:   #2E2E31;
+  --amber:  #4F8FF7;                 /* акцент/внимание — фирменный синий */
+  --amber-dim: rgba(79, 143, 247, .13);
+  --teal:   #3FB950;                 /* ok — сдержанный зелёный */
+  --teal-dim: rgba(63, 185, 80, .12);
+  --red:    #F85149;
+  --red-dim: rgba(248, 81, 73, .12);
+  --text:   #E4E4E6;
+  --muted:  #9A9A9F;
+  --dim:    #6B6B70;
+  --display: -apple-system, "SF Pro Text", Inter, system-ui, sans-serif;
+}
+body.theme-cursor, body.theme-cursor html { background: var(--space); }
+body.theme-cursor { background: var(--space); }         /* без radial-глоу */
+body.theme-cursor .lane.running { box-shadow: none; }
+body.theme-cursor .light.on i, body.theme-cursor .light.warn i,
+body.theme-cursor .mcp-dot.ok, body.theme-cursor .g-beacon { box-shadow: none; }
+body.theme-cursor .wm-forge { color: var(--text); }
+body.theme-cursor .wordmark { letter-spacing: .02em; font-weight: 600; }
+body.theme-cursor .wm-sub { letter-spacing: .12em; }
+body.theme-cursor .lane, body.theme-cursor .role-card, body.theme-cursor .provider-card,
+body.theme-cursor .mcard, body.theme-cursor .fact, body.theme-cursor .mcp-row
+  { border-radius: 8px; }
+body.theme-cursor .btn { border-radius: 6px; font-weight: 500; }
+body.theme-cursor .btn.amber { background: var(--amber); color: #fff; }
+body.theme-cursor .btn.teal { background: var(--teal); color: #fff; }
+body.theme-cursor .pane-title, body.theme-cursor .role-sec-title,
+body.theme-cursor .light span, body.theme-cursor .ap-label, body.theme-cursor .ap-state
+  { letter-spacing: .08em; }
+
+/* ── appearance section ─────────────────────────────────────────────────── */
+.theme-cards { display: flex; gap: 12px; }
+.theme-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; cursor: pointer; width: 220px; }
+.theme-card.on { border-color: var(--amber); background: var(--amber-dim); }
+.theme-card .th-name { font: 600 13.5px var(--display); margin-bottom: 4px; }
+.theme-card .th-desc { color: var(--muted); font-size: 11.5px; }
+.theme-card .th-strip { display: flex; gap: 4px; margin-top: 10px; }
+.theme-card .th-strip i { width: 22px; height: 10px; border-radius: 3px; }

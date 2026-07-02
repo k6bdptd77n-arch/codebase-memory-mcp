@@ -121,6 +121,7 @@
           <button class="snav active" data-sec="crew">Экипаж</button>
           <button class="snav" data-sec="models">Модели и провайдеры</button>
           <button class="snav" data-sec="mcp">MCP-серверы</button>
+          <button class="snav" data-sec="appearance">Оформление</button>
           <div class="snav-footer">
             <span id="crew-status" class="status-line"></span>
             <button id="crew-save" class="btn amber small" disabled>Сохранить</button>
@@ -141,6 +142,22 @@
             <div class="sec-head">MCP-серверы</div>
             <div class="sec-sub">Список серверов из конфигурации claude. Вкл/выкл для конкретной роли — в разделе «Экипаж». Добавить новый: <code>claude mcp add &lt;имя&gt; &lt;команда&gt;</code> в терминале.</div>
             <div id="mcp-list"></div>
+          </div>
+          <div id="sec-appearance" class="sec">
+            <div class="sec-head">Оформление</div>
+            <div class="sec-sub">Применяется мгновенно, сохраняется на этой машине.</div>
+            <div class="theme-cards">
+              <div class="theme-card" data-theme="cursor">
+                <div class="th-name">Cursor</div>
+                <div class="th-desc">нейтральный графит, системный шрифт, синий акцент</div>
+                <div class="th-strip"><i style="background:#1A1A1A;border:1px solid #333"></i><i style="background:#4F8FF7"></i><i style="background:#3FB950"></i></div>
+              </div>
+              <div class="theme-card" data-theme="deck">
+                <div class="th-name">Flight Deck</div>
+                <div class="th-desc">космос, приборный янтарь, телеметрийная бирюза</div>
+                <div class="th-strip"><i style="background:#0A0F1E;border:1px solid #1C2A47"></i><i style="background:#FFB347"></i><i style="background:#4FD6BE"></i></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

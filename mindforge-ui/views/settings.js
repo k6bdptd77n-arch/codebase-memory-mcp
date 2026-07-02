@@ -224,7 +224,9 @@ window.Views.settings = (() => {
 
   async function refresh() {
     if (dirty) return;                        // не затирать несохранённое фоновым обновлением
-    [cfg, inv] = await Promise.all([window.mf.crewGet(), window.mf.crewInventory()]);
+    cfg = await window.mf.crewGet();
+    headerBadge();                            // бейдж в шапке — сразу, не дожидаясь mcp list
+    inv = await window.mf.crewInventory();
     rerenderCrew();
     renderProviders();
     renderMcpList();
@@ -240,7 +242,17 @@ window.Views.settings = (() => {
     } else $("crew-status").textContent = "ошибка: " + (r.error || "");
   }
 
+  function applyTheme(t) {
+    document.body.classList.toggle("theme-cursor", t === "cursor");
+    localStorage.setItem("mf-theme", t);
+    document.querySelectorAll(".theme-card").forEach((c) =>
+      c.classList.toggle("on", c.dataset.theme === t));
+  }
+
   function init() {
+    applyTheme(localStorage.getItem("mf-theme") || "cursor");
+    for (const card of document.querySelectorAll(".theme-card"))
+      card.addEventListener("click", () => applyTheme(card.dataset.theme));
     $("crew-save").addEventListener("click", save);
     $("crew-badge").addEventListener("click", () => document.querySelector('.tab[data-tab="settings"]').click());
     for (const nav of document.querySelectorAll(".snav")) {
