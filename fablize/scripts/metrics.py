@@ -43,6 +43,8 @@ def summarize(events):
     ev = Counter(e.get("event") for e in events)
     checkpoints = [e for e in events if e.get("event") == "checkpoint"]
     statuses = Counter(c.get("status") for c in checkpoints)
+    orch_stories = [e for e in events if e.get("event") == "orchestrator_story"]
+    orch_ok = sum(1 for e in orch_stories if e.get("rc") == 0)
     completed = statuses.get("complete", 0)
     total_ck = len(checkpoints)
     projects = {e.get("cwd") for e in events if e.get("cwd")}
@@ -56,6 +58,12 @@ def summarize(events):
         "escalations": ev.get("escalation_triggered", 0),
         "specs_locked": ev.get("spec_locked", 0),
         "projects": len(projects),
+        # Orchestrator layer: parallel worktree agents fanned out over the plan.
+        "orchestrator": {
+            "runs": ev.get("orchestrator_run", 0),
+            "stories_ok": orch_ok,
+            "stories_failed": len(orch_stories) - orch_ok,
+        },
         # Brain layer (the third layer): is the persistent memory actually being used and growing?
         "brain": {
             "facts_saved": ev.get("fact_saved", 0),
@@ -89,6 +97,10 @@ def main():
     print(f"  completion rate   : {rate}")
     print(f"  escalation gate   : {s['escalations']} hit(s)")
     print(f"  specs locked      : {s['specs_locked']}")
+    o = s["orchestrator"]
+    if any(o.values()):
+        print(f"  orchestrator      : {o['runs']} run(s), "
+              f"{o['stories_ok']} story(ies) ok / {o['stories_failed']} failed")
     b = s["brain"]
     if any(b.values()):
         print(f"  brain (3rd layer) : {b['net_facts']} fact(s) net "

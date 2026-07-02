@@ -59,6 +59,8 @@ GOALS = DIR / "goals.json"
 LEDGER = DIR / "ledger.jsonl"
 WORKTREES = DIR / "worktrees"
 LOGS = DIR / "orchestrator"
+# Global, cross-project event stream for observability (metrics.py reads this).
+GLOBAL_LOG = Path.home() / ".fablize" / "events.jsonl"
 
 
 def now():
@@ -73,6 +75,12 @@ def log(event, **kw):
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except OSError:
         pass  # observability must never crash the engine
+    try:
+        GLOBAL_LOG.parent.mkdir(exist_ok=True)
+        with open(GLOBAL_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps({**rec, "tool": "orchestrate", "cwd": str(Path.cwd())}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # never let observability break the engine
 
 
 def load_plan():

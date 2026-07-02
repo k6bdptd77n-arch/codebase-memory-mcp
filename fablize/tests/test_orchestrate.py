@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ORCH = str(ROOT / "scripts" / "orchestrate.py")
 GOALS = str(ROOT / "scripts" / "goals.py")
+METRICS = str(ROOT / "scripts" / "metrics.py")
 HAS_GIT = shutil.which("git") is not None
 
 
@@ -84,6 +85,43 @@ class OrchestrateTests(Base):
         self.assertIn("obj", prompt)
         self.assertIn("ONLY this story", prompt)
         self.assertIn("Do NOT run goals.py", prompt)
+
+    def test_log_dual_writes_to_global_event_stream(self):
+        # orchestrator events must land in ~/.fablize/events.jsonl (tool="orchestrate"),
+        # same pattern as goals.py — that's what metrics.py reads
+        self.make_plan()
+        r = self.tool(ORCH, "run", "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        stream = self.tmp / ".fablize" / "events.jsonl"
+        self.assertTrue(stream.exists())
+        recs = [json.loads(x) for x in stream.read_text(encoding="utf-8").splitlines()]
+        runs = [x for x in recs if x.get("event") == "orchestrator_run"]
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["tool"], "orchestrate")
+        self.assertIn("cwd", runs[0])
+        # the local ledger keeps its copy too (dual write, not a move)
+        ledger = (self.repo / ".fablize" / "ledger.jsonl").read_text(encoding="utf-8")
+        self.assertIn("orchestrator_run", ledger)
+
+    def test_metrics_surfaces_orchestrator_activity(self):
+        stream = self.tmp / ".fablize" / "events.jsonl"
+        stream.parent.mkdir(parents=True, exist_ok=True)
+        events = [
+            {"ts": "2026-07-01T00:00:00+00:00", "event": "orchestrator_run",
+             "count": 2, "tool": "orchestrate", "cwd": str(self.repo)},
+            {"ts": "2026-07-01T00:01:00+00:00", "event": "orchestrator_story",
+             "id": "G001", "rc": 0, "tool": "orchestrate", "cwd": str(self.repo)},
+            {"ts": "2026-07-01T00:02:00+00:00", "event": "orchestrator_story",
+             "id": "G002", "rc": 1, "tool": "orchestrate", "cwd": str(self.repo)},
+        ]
+        stream.write_text("".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
+        r = self.tool(METRICS, "--json")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        s = json.loads(r.stdout)
+        self.assertEqual(s["orchestrator"], {"runs": 1, "stories_ok": 1, "stories_failed": 1})
+        r = self.tool(METRICS)
+        self.assertIn("orchestrator", r.stdout)
+        self.assertIn("1 run(s), 1 story(ies) ok / 1 failed", r.stdout)
 
     @unittest.skipUnless(HAS_GIT, "git not available")
     def test_end_to_end_with_stub_agent(self):
