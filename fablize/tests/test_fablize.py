@@ -113,6 +113,38 @@ class GoalsTests(Base):
         lines = [json.loads(x) for x in log.read_text().splitlines() if x.strip()]
         self.assertTrue(any(e["event"] == "plan_created" and e["tool"] == "goals" for e in lines))
 
+    def test_add_requires_existing_plan(self):
+        r = self.run_script(GOALS, "add", "--goal", "extra::late-breaking work")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("no plan", r.stderr)
+
+    def test_add_appends_sequential_ids(self):
+        self._create()
+        r = self.run_script(GOALS, "add", "--goal", "extra::more work", "--goal", "polish::final touches")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("G003", r.stdout)
+        self.assertIn("G004", r.stdout)
+        s = self.run_script(GOALS, "status")
+        self.assertIn("0/4 complete", s.stdout)
+
+    def test_add_moves_verification_gate_to_new_final_story(self):
+        self._create()
+        self.run_script(GOALS, "add", "--goal", "extra::the real final story")
+        self.run_script(GOALS, "next")
+        self.run_script(GOALS, "checkpoint", "--id", "G001", "--status", "complete", "--evidence", "built")
+        self.run_script(GOALS, "next")
+        # G002 was the final story before `add` — it must no longer require the gate
+        r = self.run_script(GOALS, "checkpoint", "--id", "G002", "--status", "complete", "--evidence", "done")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.run_script(GOALS, "next")  # activates the new final G003
+        bad = self.run_script(GOALS, "checkpoint", "--id", "G003", "--status", "complete", "--evidence", "done")
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertIn("verification gate", bad.stderr)
+        ok = self.run_script(GOALS, "checkpoint", "--id", "G003", "--status", "complete",
+                             "--evidence", "done", "--verify-cmd", "pytest", "--verify-evidence", "all passed")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertIn("all stories complete", ok.stdout)
+
 
 class SpecTests(Base):
     def test_lock_needs_something(self):
