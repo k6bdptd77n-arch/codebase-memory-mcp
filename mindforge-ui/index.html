@@ -18,6 +18,7 @@
       <div class="light" id="light-procedure"><i></i><span>PROCEDURE</span><em id="light-procedure-v">—</em></div>
       <div class="light" id="light-brain"><i></i><span>BRAIN</span><em id="light-brain-v">—</em></div>
     </div>
+    <button id="crew-badge" class="crew-badge" title="Экипаж: модели ролей — нажмите, чтобы настроить"></button>
     <label class="autopilot" title="АВТО: когда агент заканчивает, claude-ревьюер смотрит диф, и при зелёных тестах стори мержится сама">
       <span class="ap-label">AUTOPILOT</span>
       <input type="checkbox" id="autopilot" />
@@ -32,6 +33,7 @@
     <button class="tab" data-tab="plan">План</button>
     <button class="tab" data-tab="brain">Мозг</button>
     <button class="tab" data-tab="metrics">Метрики</button>
+    <button class="tab" data-tab="crew">Экипаж</button>
     <button class="tab" data-tab="terminal">Терминал</button>
   </nav>
 
@@ -111,6 +113,16 @@
       </div>
     </section>
 
+    <!-- Crew: agent roles -->
+    <section id="view-crew" class="view">
+      <div class="crew-top">
+        <div class="pane-title">Экипаж — кто чем занимается и с какими инструментами</div>
+        <span id="crew-status" class="status-line"></span>
+        <button id="crew-save" class="btn amber small" disabled>Сохранить</button>
+      </div>
+      <div id="crew-cards" class="crew-cards"></div>
+    </section>
+
     <!-- Terminal -->
     <section id="view-terminal" class="view">
       <div id="term"></div>
@@ -147,6 +159,7 @@
   <script src="views/plan.js"></script>
   <script src="views/brain.js"></script>
   <script src="views/metrics.js"></script>
+  <script src="views/crew.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

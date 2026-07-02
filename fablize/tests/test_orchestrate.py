@@ -123,6 +123,17 @@ class OrchestrateTests(Base):
         self.assertIn("orchestrator", r.stdout)
         self.assertIn("1 run(s), 1 story(ies) ok / 1 failed", r.stdout)
 
+    def test_agent_arg_pass_through(self):
+        # crew role args (--model, --mcp-config, …) must reach the agent command verbatim
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("orch2", ORCH)
+        orch = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(orch)
+        cmd = orch.agent_cmd("claude", "p", "acceptEdits",
+                             ["--model", "haiku", "--strict-mcp-config"])
+        self.assertEqual(cmd[-3:], ["--model", "haiku", "--strict-mcp-config"])
+        self.assertEqual(cmd[:2], ["claude", "-p"])
+
     @unittest.skipUnless(HAS_GIT, "git not available")
     def test_end_to_end_with_stub_agent(self):
         subprocess.run(["git", "init", "-q"], cwd=str(self.repo), env=self.env, capture_output=True)

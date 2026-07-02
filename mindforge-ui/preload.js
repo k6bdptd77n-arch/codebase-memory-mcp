@@ -37,6 +37,11 @@ contextBridge.exposeInMainWorld("mf", {
   planAccept: (brief, stories, mode) => ipcRenderer.invoke("plan-accept", { brief, stories, mode }),
   onClaudeStream: (cb) => ipcRenderer.on("claude-stream", (_e, m) => cb(m)),
 
+  // crew (agent roles: brain / planner / hand)
+  crewGet: () => ipcRenderer.invoke("crew-get"),
+  crewSave: (cfg) => ipcRenderer.invoke("crew-save", cfg),
+  crewInventory: () => ipcRenderer.invoke("crew-inventory"),
+
   // native confirmation for destructive actions
   confirm: (title, detail) => ipcRenderer.invoke("confirm", { title, detail }),
 });
