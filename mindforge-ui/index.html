@@ -1,53 +1,151 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MindForge</title>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:" />
+  <link rel="stylesheet" href="fonts/fonts.css" />
   <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
   <link rel="stylesheet" href="styles.css" />
+  <title>MindForge Control</title>
 </head>
 <body>
-  <header id="bar">
-    <span class="logo">◆ MindForge</span>
-    <span class="sub">integrated terminal · live explanations</span>
-    <span id="status" class="status">●&nbsp;ready</span>
+  <!-- ── header: wordmark · layer indicators · autopilot ─────────────────── -->
+  <header id="deck-header">
+    <div class="wordmark"><span class="wm-mind">MIND</span><span class="wm-forge">FORGE</span><span class="wm-sub">control</span></div>
+    <div id="layer-lights" class="layer-lights">
+      <div class="light" id="light-memory"><i></i><span>MEMORY</span><em id="light-memory-v">—</em></div>
+      <div class="light" id="light-procedure"><i></i><span>PROCEDURE</span><em id="light-procedure-v">—</em></div>
+      <div class="light" id="light-brain"><i></i><span>BRAIN</span><em id="light-brain-v">—</em></div>
+    </div>
+    <label class="autopilot" title="auto: after an agent exits, a claude reviewer verdicts the diff and green-gated stories merge themselves">
+      <span class="ap-label">AUTOPILOT</span>
+      <input type="checkbox" id="autopilot" />
+      <span class="ap-track"><span class="ap-thumb"></span></span>
+      <span class="ap-state" id="ap-state">MANUAL</span>
+    </label>
   </header>
 
-  <main id="split">
-    <section id="left">
-      <div class="pane-title">TERMINAL <span class="hint">— real PTY · type <code>claude</code> to start the agent</span></div>
-      <div id="term"></div>
+  <!-- ── tab rail ─────────────────────────────────────────────────────────── -->
+  <nav id="tabs">
+    <button class="tab active" data-tab="board">Board</button>
+    <button class="tab" data-tab="plan">Plan</button>
+    <button class="tab" data-tab="brain">Brain</button>
+    <button class="tab" data-tab="metrics">Metrics</button>
+    <button class="tab" data-tab="terminal">Terminal</button>
+  </nav>
+
+  <main>
+    <!-- Board: mission lanes -->
+    <section id="view-board" class="view active">
+      <div id="board-brief" class="board-brief"></div>
+      <div id="lanes"></div>
+      <div id="board-empty" class="empty hidden">
+        <div class="empty-title">No flight plan</div>
+        <div class="empty-hint">Open the Plan tab, describe a feature, and the planner will lay out the stories.</div>
+      </div>
     </section>
 
-    <aside id="right">
-      <div class="panel">
-        <div class="panel-head">① Reasoning &amp; decisions <span class="src">live agent stream · brain traces</span></div>
-        <div class="agent-bar">
-          <input id="agent-input" placeholder="Give the agent a task — watch it think &amp; decide…" />
-          <label class="auto" title="Let the agent actually run tools (skip permission prompts)"><input type="checkbox" id="agent-auto" /> auto</label>
-          <button id="agent-go">Run</button>
+    <!-- Plan: feature → stories -->
+    <section id="view-plan" class="view">
+      <div class="plan-grid">
+        <div class="plan-left">
+          <div class="pane-title">Describe the feature</div>
+          <textarea id="plan-input" placeholder="What should be built? The planner reads the project brain first, then lays out 1–4 stories with disjoint file scopes."></textarea>
+          <div class="plan-actions">
+            <button id="plan-go" class="btn amber">Plan it</button>
+            <span id="plan-status" class="status-line"></span>
+          </div>
+          <div id="plan-preview" class="plan-preview hidden">
+            <div class="pane-title">Proposed stories — review before accepting</div>
+            <ol id="plan-stories"></ol>
+            <div class="plan-actions">
+              <button id="plan-accept" class="btn teal">Accept → new plan</button>
+              <button id="plan-append" class="btn ghost">Append to current plan</button>
+              <button id="plan-discard" class="btn ghost">Discard</button>
+            </div>
+          </div>
         </div>
-        <div id="p-stream" class="panel-body stream"><div class="muted">Type a task above and press Run — every thought, decision and tool call streams here live.</div></div>
-        <details class="traces-fold"><summary>past session traces</summary><div id="p-reason" class="panel-body">…</div></details>
+        <div class="plan-right">
+          <div class="pane-title">Planner thinking <span class="live-dot" id="plan-live"></span></div>
+          <pre id="plan-stream" class="stream"></pre>
+        </div>
       </div>
-      <div class="panel">
-        <div class="panel-head">② Terminal commands <span class="src">annotated as you run them</span></div>
-        <div id="p-cmds" class="panel-body"><div class="muted">Run a command in the terminal — it appears here with a short explanation.</div></div>
+    </section>
+
+    <!-- Brain: facts · episodes · prune -->
+    <section id="view-brain" class="view">
+      <div class="brain-grid">
+        <div class="brain-left">
+          <div class="brain-toolbar">
+            <input id="brain-q" placeholder="recall the project memory…" />
+            <button id="brain-search" class="btn ghost">Recall</button>
+            <button id="brain-prune" class="btn ghost danger-ghost">Prune expired…</button>
+          </div>
+          <div id="brain-recall-out" class="recall-out hidden"></div>
+          <div class="pane-title">Facts <em id="brain-count"></em></div>
+          <div id="facts"></div>
+        </div>
+        <div class="brain-right">
+          <div class="pane-title">Episodes — how past tasks actually ended</div>
+          <div id="episode-list"></div>
+        </div>
       </div>
-      <div class="panel">
-        <div class="panel-head">③ MindForge layers <span class="src">brain · goals · memory graph</span></div>
-        <div id="p-layers" class="panel-body">…</div>
+    </section>
+
+    <!-- Metrics: telemetry + locked spec -->
+    <section id="view-metrics" class="view">
+      <div class="metrics-grid">
+        <div id="metric-cards" class="metric-cards"></div>
+        <div class="metrics-cols">
+          <div>
+            <div class="pane-title">Locked spec</div>
+            <div id="spec-view" class="spec-view"></div>
+          </div>
+          <div>
+            <div class="pane-title">Ledger — latest events</div>
+            <div id="ledger-view" class="ledger-view"></div>
+          </div>
+        </div>
       </div>
-      <div class="panel">
-        <div class="panel-head">④ File diffs <span class="src">git diff</span></div>
-        <div id="p-diff" class="panel-body">…</div>
-      </div>
-    </aside>
+    </section>
+
+    <!-- Terminal -->
+    <section id="view-terminal" class="view">
+      <div id="term"></div>
+    </section>
   </main>
+
+  <!-- ── telemetry footer ─────────────────────────────────────────────────── -->
+  <footer id="telemetry">
+    <span id="tm-plan">—</span>
+    <span class="tm-sep"></span>
+    <span id="tm-agents">agents: 0</span>
+    <span class="tm-sep"></span>
+    <span id="tm-note" class="tm-note"></span>
+    <span class="tm-clock" id="tm-clock"></span>
+  </footer>
+
+  <!-- review drawer (slides over the board) -->
+  <aside id="drawer" class="drawer hidden">
+    <div class="drawer-head">
+      <span id="drawer-title">Review</span>
+      <button id="drawer-close" class="btn ghost">Close</button>
+    </div>
+    <pre id="drawer-body" class="stream"></pre>
+    <div class="drawer-actions">
+      <button id="drawer-approve" class="btn teal">Approve — gate, merge, clean up</button>
+      <button id="drawer-fail" class="btn red">Fail — send back</button>
+    </div>
+    <div id="drawer-progress" class="drawer-progress"></div>
+  </aside>
 
   <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="views/board.js"></script>
+  <script src="views/plan.js"></script>
+  <script src="views/brain.js"></script>
+  <script src="views/metrics.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>
