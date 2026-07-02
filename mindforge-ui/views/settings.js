@@ -93,8 +93,21 @@ window.Views.settings = (() => {
       if ((rc.model || "inherit") === o.v) op.selected = true;
       sel.appendChild(op);
     }
+    if (role.think && opts.length === CLAUDE_MODELS.length) {
+      const op = document.createElement("option");
+      op.disabled = true;
+      op.textContent = "── другие ИИ: включите провайдера ниже ──";
+      sel.appendChild(op);
+    }
     sel.addEventListener("change", () => { rc.model = sel.value; markDirty(); });
     mr.appendChild(sel);
+    if (role.think) {
+      const hint = document.createElement("button");
+      hint.className = "model-hint";
+      hint.textContent = "+ GPT / Ollama / OpenRouter — включить в «Модели и провайдеры»";
+      hint.addEventListener("click", () => document.querySelector('.snav[data-sec="models"]').click());
+      mr.appendChild(hint);
+    }
 
     const toggleRow = (box, key, store, extraHtml) => {
       const row = document.createElement("label");
