@@ -9,7 +9,8 @@ Design (behavior only):
 
 Usage:
   goals.py create --brief "..." --goal "title::objective" [--goal ...]
-  goals.py next                       # activate the next story + print a handoff
+  goals.py add --goal "title::objective" [--goal ...]   # append stories to an existing plan
+  goals.py next                     # activate the next story + print a handoff
   goals.py checkpoint --id G001 --status complete|failed|blocked --evidence "..."
                       [--verify-cmd "<command run>" --verify-evidence "<result>"]   # required on the final story
   goals.py status
@@ -105,6 +106,28 @@ def cmd_create(a):
     log("plan_created", brief=a.brief, count=len(goals))
     print(f"fablize: plan created — {len(goals)} stories")
     for g in goals:
+        print(f"  {g['id']} {g['title']}: {g['objective']}")
+
+
+def cmd_add(a):
+    plan = load()  # exits if no plan — `add` extends, never creates
+    if not a.goal:
+        sys.exit("fablize: at least one --goal is required.")
+    start = max((int(g["id"][1:]) for g in plan["goals"]), default=0) + 1
+    added = []
+    for i, g in enumerate(a.goal, start):
+        if "::" not in g:
+            sys.exit(f"fablize: --goal format is 'title::objective' — invalid: {g}")
+        title, obj = g.split("::", 1)
+        added.append({"id": f"G{i:03d}", "title": title.strip(), "objective": obj.strip(),
+                      "status": "pending", "evidence": None, "attempts": 0})
+    # Appending moves the verification gate: `next`/`checkpoint` treat plan["goals"][-1]
+    # as the final story, so the new last story now carries the gate.
+    plan["goals"].extend(added)
+    save(plan)
+    log("stories_added", count=len(added), total=len(plan["goals"]))
+    print(f"fablize: {len(added)} stories added — {len(plan['goals'])} total")
+    for g in added:
         print(f"  {g['id']} {g['title']}: {g['objective']}")
 
 
@@ -210,6 +233,7 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("create"); c.add_argument("--brief", required=True)
     c.add_argument("--goal", action="append", default=[]); c.add_argument("--force", action="store_true")
+    ad = sub.add_parser("add"); ad.add_argument("--goal", action="append", default=[])
     sub.add_parser("next")
     k = sub.add_parser("checkpoint"); k.add_argument("--id", required=True)
     k.add_argument("--status", required=True, choices=["complete", "failed", "blocked"])
@@ -218,7 +242,7 @@ def main():
     rt = sub.add_parser("retry"); rt.add_argument("--id", required=True)
     sub.add_parser("status")
     a = p.parse_args()
-    {"create": cmd_create, "next": cmd_next, "checkpoint": cmd_checkpoint,
+    {"create": cmd_create, "add": cmd_add, "next": cmd_next, "checkpoint": cmd_checkpoint,
      "retry": cmd_retry, "status": cmd_status}[a.cmd](a)
 
 
