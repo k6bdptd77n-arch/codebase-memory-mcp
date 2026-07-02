@@ -259,6 +259,96 @@ class EpisodicRecallTests(Base):
         self.assertIn("caching", r.stdout)
 
 
+class ExpiryTests(Base):
+    """Optional 'expires: YYYY-MM-DD' frontmatter: expired facts (date < today, UTC) vanish
+    from recall/index but stay on disk until `prune --apply` deletes them."""
+
+    PAST, FUTURE = "2020-01-01", "2099-12-31"
+
+    def _seed_expiring(self):
+        self.brain("remember", "--name", "stale", "--desc", "old sprint deadline",
+                   "--body", "Sprint deadline fact.", "--type", "project", "--expires", self.PAST)
+        self.brain("remember", "--name", "fresh", "--desc", "next sprint deadline",
+                   "--body", "Sprint deadline fact.", "--type", "project", "--expires", self.FUTURE)
+        self.brain("remember", "--name", "forever", "--desc", "timeless sprint convention",
+                   "--body", "Sprint deadline fact.", "--type", "project")
+
+    def test_expires_written_to_frontmatter(self):
+        self._seed_expiring()
+        text = (self.repo / ".fablize" / "brain" / "fresh.md").read_text(encoding="utf-8")
+        self.assertIn(f"expires: {self.FUTURE}", text)
+        # no --expires → no expires key
+        text = (self.repo / ".fablize" / "brain" / "forever.md").read_text(encoding="utf-8")
+        self.assertNotIn("expires:", text)
+
+    def test_invalid_expires_rejected(self):
+        r = self.brain("remember", "--name", "bad", "--desc", "x", "--body", "x",
+                       "--expires", "not-a-date")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("YYYY-MM-DD", r.stderr)
+        self.assertFalse((self.repo / ".fablize" / "brain" / "bad.md").exists())
+
+    def test_recall_skips_expired(self):
+        self._seed_expiring()
+        r = self.brain("recall", "--query", "sprint deadline")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("fresh", r.stdout)
+        self.assertIn("forever", r.stdout)
+        self.assertNotIn("stale", r.stdout)
+
+    def test_index_skips_expired(self):
+        self._seed_expiring()
+        r = self.brain("index")
+        self.assertIn("fresh", r.stdout)
+        self.assertIn("forever", r.stdout)
+        self.assertNotIn("stale", r.stdout)
+
+    def test_prune_dry_run_lists_but_keeps(self):
+        self._seed_expiring()
+        r = self.brain("prune")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("stale", r.stdout)
+        self.assertIn("Dry run", r.stdout)
+        self.assertNotIn("fresh", r.stdout)
+        # nothing deleted without --apply
+        self.assertTrue((self.repo / ".fablize" / "brain" / "stale.md").exists())
+
+    def test_prune_apply_deletes_only_expired(self):
+        self._seed_expiring()
+        r = self.brain("prune", "--apply")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("stale", r.stdout)
+        store = self.repo / ".fablize" / "brain"
+        self.assertFalse((store / "stale.md").exists())
+        self.assertTrue((store / "fresh.md").exists())
+        self.assertTrue((store / "forever.md").exists())
+
+    def test_prune_clean_store(self):
+        self.brain("remember", "--name", "keep", "--desc", "x", "--body", "x")
+        r = self.brain("prune")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("nothing expired", r.stdout)
+
+    def test_prune_finds_expired_in_global_scope(self):
+        self.brain("remember", "--name", "old-pref", "--desc", "x", "--body", "x",
+                   "--type", "user", "--scope", "global", "--expires", self.PAST)
+        r = self.brain("prune", "--apply")
+        self.assertIn("old-pref", r.stdout)
+        self.assertFalse((Path(self.tmp) / ".fablize" / "brain" / "old-pref.md").exists())
+
+    def test_malformed_expires_in_hand_edited_file_stays_live(self):
+        # hand-edited facts are first-class; a bad date must not hide or crash the fact
+        f = self.repo / ".fablize" / "brain" / "odd.md"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("---\nname: odd\ndescription: hand edited\ntype: project\n"
+                     "expires: someday\n---\n\nhand edited fact\n", encoding="utf-8")
+        r = self.brain("index")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("odd", r.stdout)
+        r = self.brain("prune")
+        self.assertIn("nothing expired", r.stdout)
+
+
 class BrainMetricsTests(Base):
     def test_metrics_surface_brain_activity(self):
         self.brain("remember", "--name", "a", "--desc", "d", "--body", "b")

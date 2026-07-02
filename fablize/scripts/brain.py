@@ -22,11 +22,13 @@ Usage:
                    [--episodes N]   # also surfaces past episodes + ledger warnings (0 disables)
   brain.py remember --name slug --desc "one line" --body "the fact"
                     [--type ...] [--scope project|global] [--link other-slug]
+                    [--expires YYYY-MM-DD]   # fact stops being recalled after this date (UTC)
   brain.py reflect --trace "what happened" [--lesson "..."] [--worked "..."] [--failed "..."]
   brain.py profile [show]
   brain.py profile set --key prefers --value "concise, evidence-first"
   brain.py relate --from SymbolOrFile --to SymbolOrFile --rel "depends on"   # emits an MCP graph call
   brain.py forget --name slug
+  brain.py prune [--apply]   # list expired facts; delete them only with --apply
   brain.py index
 State directories: ./.fablize/brain/ (project) and ~/.fablize/brain/ (global). Run from the repo root.
 """
@@ -124,11 +126,29 @@ def parse_fact(path):
     return fm, body
 
 
-def iter_facts():
+def parse_expiry(s):
+    """'YYYY-MM-DD' → date, or None when absent/malformed (a bad hand-edited date must
+    never crash — or silently hide — the rest of the store)."""
+    try:
+        return datetime.strptime((s or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def is_expired(fm, today=None):
+    """A fact is expired when its 'expires' date is strictly before today (UTC) —
+    it stays live through its expiry day."""
+    exp = parse_expiry(fm.get("expires"))
+    return exp is not None and exp < (today or datetime.now(timezone.utc).date())
+
+
+def iter_facts(include_expired=False):
     for store, scope in ((PROJ, "project"), (GLOBAL, "global")):
         if store.exists():
             for p in sorted(store.glob("*.md")):
                 fm, body = parse_fact(p)
+                if not include_expired and is_expired(fm):
+                    continue
                 yield p, scope, fm, body
 
 
@@ -293,6 +313,8 @@ def ledger_warnings(query, limit=2):
 def cmd_remember(a):
     if a.type not in TYPES:
         sys.exit(f"fablize: --type must be one of {', '.join(TYPES)}.")
+    if a.expires and parse_expiry(a.expires) is None:
+        sys.exit("fablize: --expires must be a valid YYYY-MM-DD date.")
     store = store_for(a.scope)
     store.mkdir(parents=True, exist_ok=True)
     name = slug(a.name)
@@ -306,8 +328,10 @@ def cmd_remember(a):
         f"type: {a.type}",
         f"scope: {a.scope}",
         f"updated: {now()}",
-        "---",
     ]
+    if a.expires:
+        fm.append(f"expires: {a.expires}")
+    fm.append("---")
     path.write_text("\n".join(fm) + "\n\n" + a.body.strip() + links + "\n", encoding="utf-8")
     log("fact_saved", name=name, type=a.type, scope=a.scope)
     print(f"fablize brain: {verb} [{a.type}/{a.scope}] {name} → {path}")
@@ -456,6 +480,24 @@ def cmd_forget(a):
         print(f"fablize brain: no fact named {name}.")
 
 
+def cmd_prune(a):
+    expired = [(p, scope, fm) for p, scope, fm, _ in iter_facts(include_expired=True) if is_expired(fm)]
+    if not expired:
+        print("fablize brain: nothing expired — the store is clean.")
+        return
+    verb = "pruned" if a.apply else "would prune"
+    print(f"=== fablize brain prune — {len(expired)} expired fact(s) ({verb}) ===")
+    for p, scope, fm in expired:
+        print(f"  [{fm.get('type','?')}/{scope}] {fm.get('name', p.stem)} "
+              f"(expired {fm.get('expires','?')}) → {p}")
+        if a.apply:
+            p.unlink()
+    if a.apply:
+        log("facts_pruned", count=len(expired), names=[fm.get("name", p.stem) for p, _, fm in expired])
+    else:
+        print("Dry run — nothing deleted. Re-run with --apply to delete these facts.")
+
+
 def cmd_index(a):
     facts = list(iter_facts())
     if not facts:
@@ -483,6 +525,7 @@ def main():
     m.add_argument("--type", default="project")
     m.add_argument("--scope", default="project", choices=["project", "global"])
     m.add_argument("--link", action="append", default=[])
+    m.add_argument("--expires", default="")
 
     rf = sub.add_parser("reflect")
     rf.add_argument("--trace", required=True)
@@ -503,12 +546,15 @@ def main():
     fg = sub.add_parser("forget")
     fg.add_argument("--name", required=True)
 
+    pn = sub.add_parser("prune")
+    pn.add_argument("--apply", action="store_true")
+
     sub.add_parser("index")
 
     a = p.parse_args()
     {"recall": cmd_recall, "remember": cmd_remember, "reflect": cmd_reflect,
      "profile": cmd_profile, "relate": cmd_relate, "forget": cmd_forget,
-     "index": cmd_index}[a.cmd](a)
+     "prune": cmd_prune, "index": cmd_index}[a.cmd](a)
 
 
 if __name__ == "__main__":
