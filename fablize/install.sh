@@ -9,21 +9,24 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 TARGET="${1:-$PWD}"
 echo "fablize (procedure layer) → $TARGET"
 
-mkdir -p "$TARGET/.fablize-disciplines/packs" "$TARGET/.fablize-disciplines/scripts"
+mkdir -p "$TARGET/.fablize-disciplines/packs" "$TARGET/.fablize-disciplines/scripts" "$TARGET/.fablize-disciplines/hooks"
 cp "$HERE/packs/"*.txt   "$TARGET/.fablize-disciplines/packs/"
 cp "$HERE/scripts/"*.py  "$TARGET/.fablize-disciplines/scripts/"
-cp "$HERE/hooks/destructive_guard.py" "$TARGET/.fablize-disciplines/" 2>/dev/null || true
-echo "  ✓ packs + scripts → .fablize-disciplines/"
+cp "$HERE/hooks/"*.py    "$TARGET/.fablize-disciplines/hooks/" 2>/dev/null || true
+echo "  ✓ packs + scripts + hooks → .fablize-disciplines/"
 
 # Append the operating block to any instruction file the agent already uses, else AGENTS.md.
+# Rewrite the in-repo-relative command paths (scripts/ packs/ hooks/) to the installed namespace so
+# the documented commands actually resolve in the target project (the repo copy keeps scripts/).
 block="$HERE/AGENTS.md"
+rewrite() { sed -E 's#(`| )(scripts|packs|hooks)/#\1.fablize-disciplines/\2/#g' "$1"; }
 wrote=0
 for f in AGENTS.md CLAUDE.md .cursorrules .github/copilot-instructions.md GEMINI.md; do
   path="$TARGET/$f"
   if [ -f "$path" ]; then
     if ! grep -q "fablize — operating disciplines" "$path" 2>/dev/null; then
       mkdir -p "$(dirname "$path")"
-      { printf '\n\n'; cat "$block"; } >> "$path"
+      { printf '\n\n'; rewrite "$block"; } >> "$path"
       echo "  ✓ appended disciplines to $f"
     else
       echo "  = $f already has fablize disciplines"
@@ -32,28 +35,48 @@ for f in AGENTS.md CLAUDE.md .cursorrules .github/copilot-instructions.md GEMINI
   fi
 done
 if [ "$wrote" -eq 0 ]; then
-  cp "$block" "$TARGET/AGENTS.md"
+  rewrite "$block" > "$TARGET/AGENTS.md"
   echo "  ✓ created AGENTS.md"
 fi
 
-# Register the destructive-action guard for Claude Code, if its settings file is present.
+# Register the Claude Code hooks (PreToolUse guard + Stop auto-reflect): atomic write so a crash
+# can't corrupt the user's global settings, and self-healing idempotency (drop any prior entry for
+# this hook — e.g. a stale path from a moved checkout — then re-add the current one).
 SETTINGS="$HOME/.claude/settings.json"
-if command -v python3 >/dev/null 2>&1 && [ -f "$SETTINGS" ]; then
-  python3 - "$SETTINGS" "$TARGET/.fablize-disciplines/destructive_guard.py" <<'PY' || true
-import json, os, sys
-settings, guard = sys.argv[1], sys.argv[2]
+DISC="$TARGET/.fablize-disciplines"
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$SETTINGS" "$DISC/hooks/destructive_guard.py" "$DISC/hooks/brain_reflect.py" <<'PY' || true
+import json, os, sys, tempfile
+settings, guard, reflect = sys.argv[1], sys.argv[2], sys.argv[3]
+if not os.path.exists(settings):
+    print("  ! ~/.claude/settings.json not found — hooks copied but NOT wired (no Claude Code here?).")
+    raise SystemExit(0)
 try:
     data = json.load(open(settings, encoding="utf-8"))
 except (OSError, ValueError):
+    print("  ! ~/.claude/settings.json unreadable — hooks copied but NOT wired.")
     raise SystemExit(0)
-cmd = f'python3 "{guard}"'
-hooks = data.setdefault("hooks", {}).setdefault("PreToolUse", [])
-blob = json.dumps(hooks)
-if "destructive_guard.py" in blob:
-    print("  = destructive guard already registered (Claude Code)"); raise SystemExit(0)
-hooks.append({"matcher": "Bash", "hooks": [{"type": "command", "command": cmd, "timeout": 10}]})
-json.dump(data, open(settings, "w", encoding="utf-8"), indent=2)
-print("  ✓ destructive guard registered (Claude Code PreToolUse)")
+
+def register(event, basename, entry):
+    arr = data.setdefault("hooks", {}).setdefault(event, [])
+    data["hooks"][event] = [h for h in arr if basename not in json.dumps(h)] + [entry]
+
+register("PreToolUse", "destructive_guard.py",
+         {"matcher": "Bash", "hooks": [{"type": "command", "command": f'python3 "{guard}"', "timeout": 10}]})
+register("Stop", "brain_reflect.py",
+         {"hooks": [{"type": "command", "command": f'python3 "{reflect}"', "timeout": 10}]})
+
+d = os.path.dirname(settings) or "."
+fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, settings)  # atomic
+except OSError:
+    try: os.unlink(tmp)
+    except OSError: pass
+    print("  ! could not write ~/.claude/settings.json — hooks copied but NOT wired."); raise SystemExit(0)
+print("  ✓ Claude Code hooks registered (PreToolUse guard + Stop auto-reflect)")
 PY
 fi
 

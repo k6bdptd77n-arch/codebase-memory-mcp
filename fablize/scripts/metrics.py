@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """fablize metrics — summarize the cross-project event stream (~/.fablize/events.jsonl).
 
-This is the observability layer: it turns the raw event log written by goals.py / spec.py
-into real, queryable numbers (how many plans, completion rate, how often work hit the
-escalation gate, how many specs were locked). It gives the "verified-only" philosophy
-actual data to decide on, instead of self-assessment.
+This is the observability layer: it turns the raw event log written by goals.py / spec.py /
+brain.py into real, queryable numbers (how many plans, completion rate, how often work hit the
+escalation gate, how many specs were locked, how the brain layer is growing). It gives the
+"verified-only" philosophy actual data to decide on, instead of self-assessment.
 
 Usage:
   metrics.py              # human-readable summary
@@ -23,7 +23,9 @@ def read_events(since=""):
     if not GLOBAL_LOG.exists():
         return []
     out = []
-    for line in GLOBAL_LOG.read_text(encoding="utf-8").splitlines():
+    # errors="replace": one torn/invalid byte (e.g. an interleaved concurrent append) must not
+    # crash the whole summary — the per-line try/except below can only help if decoding got this far.
+    for line in GLOBAL_LOG.read_text(encoding="utf-8", errors="replace").splitlines():
         line = line.strip()
         if not line:
             continue
@@ -54,6 +56,16 @@ def summarize(events):
         "escalations": ev.get("escalation_triggered", 0),
         "specs_locked": ev.get("spec_locked", 0),
         "projects": len(projects),
+        # Brain layer (the third layer): is the persistent memory actually being used and growing?
+        "brain": {
+            "facts_saved": ev.get("fact_saved", 0),
+            "facts_forgotten": ev.get("fact_forgotten", 0),
+            "recalls": ev.get("recall", 0),
+            "reflects": ev.get("reflect", 0),
+            "relations_emitted": ev.get("relate_emitted", 0),
+            # net facts in the store = saved minus forgotten (a rough growth signal, never below 0)
+            "net_facts": max(ev.get("fact_saved", 0) - ev.get("fact_forgotten", 0), 0),
+        },
     }
 
 
@@ -77,6 +89,12 @@ def main():
     print(f"  completion rate   : {rate}")
     print(f"  escalation gate   : {s['escalations']} hit(s)")
     print(f"  specs locked      : {s['specs_locked']}")
+    b = s["brain"]
+    if any(b.values()):
+        print(f"  brain (3rd layer) : {b['net_facts']} fact(s) net "
+              f"({b['facts_saved']} saved / {b['facts_forgotten']} forgotten), "
+              f"{b['reflects']} reflect(s), {b['recalls']} recall(s), "
+              f"{b['relations_emitted']} relation(s)→graph")
 
 
 if __name__ == "__main__":

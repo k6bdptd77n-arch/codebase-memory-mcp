@@ -9,8 +9,9 @@ in their project.
 What goes in the bundle:
   AGENTS.md          - the universal operating block (read by most agents)
   packs/             - the verified discipline packs (plain text)
-  scripts/           - goals.py, spec.py, metrics.py (stdlib-only Python)
-  apply.sh           - drops AGENTS.md + packs/ + scripts/ into a target project
+  scripts/           - brain.py, goals.py, spec.py, metrics.py, bundle.py (stdlib-only Python)
+  hooks/             - brain_reflect.py (auto-reflect Stop hook), destructive_guard.py
+  apply.sh           - drops AGENTS.md + packs/ + scripts/ + hooks/ into a target project
   QUICKSTART.md      - per-tool wiring instructions
 
 Usage:
@@ -30,9 +31,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TARGET="${1:-$PWD}"
 echo "fablize → $TARGET"
-mkdir -p "$TARGET/packs" "$TARGET/scripts"
+mkdir -p "$TARGET/packs" "$TARGET/scripts" "$TARGET/hooks"
 cp "$HERE/packs/"*.txt "$TARGET/packs/"
 cp "$HERE/scripts/"*.py "$TARGET/scripts/"
+cp "$HERE/hooks/"*.py "$TARGET/hooks/" 2>/dev/null || true
 # Append the operating block to the agent instruction file(s) present, else create AGENTS.md.
 block="$HERE/AGENTS.md"
 wrote=0
@@ -105,16 +107,24 @@ def build(out_dir):
         shutil.rmtree(pkg)
     (pkg / "packs").mkdir(parents=True)
     (pkg / "scripts").mkdir(parents=True)
+    (pkg / "hooks").mkdir(parents=True)
 
-    shutil.copy2(ROOT / "AGENTS.md", pkg / "AGENTS.md")
+    # AGENTS.md / README.md may legitimately be absent in a slimmed checkout — guard rather than crash.
+    for top in ("AGENTS.md", "README.md"):
+        src = ROOT / top
+        if src.exists():
+            shutil.copy2(src, pkg / top)
     for f in (ROOT / "packs").glob("*.txt"):
         shutil.copy2(f, pkg / "packs" / f.name)
-    for name in ("goals.py", "spec.py", "metrics.py"):
-        shutil.copy2(ROOT / "scripts" / name, pkg / "scripts" / name)
+    # Ship the WHOLE procedure layer including the third (brain) layer — copy every engine present.
+    for f in (ROOT / "scripts").glob("*.py"):
+        shutil.copy2(f, pkg / "scripts" / f.name)
+    # The hooks make growth/safety structural (auto-reflect Stop hook, destructive guard).
+    for f in (ROOT / "hooks").glob("*.py"):
+        shutil.copy2(f, pkg / "hooks" / f.name)
     (pkg / "apply.sh").write_text(APPLY_SH, encoding="utf-8")
     (pkg / "apply.sh").chmod(0o755)
     (pkg / "QUICKSTART.md").write_text(QUICKSTART, encoding="utf-8")
-    shutil.copy2(ROOT / "README.md", pkg / "README.md")
 
     zip_path = out_dir / "fablize-portable.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:

@@ -18,7 +18,10 @@ import sys
 
 # (compiled pattern, human reason). Order doesn't matter; first match wins for the message.
 RULES = [
-    (r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*\s+)*-?[a-zA-Z]*f|\brm\s+-[a-zA-Z]*f[a-zA-Z]*r", "recursive/forced file deletion (rm -rf)"),
+    # Require a real recursive/force FLAG (short bundle like -rf/-Rf, or long --recursive/--force).
+    # The old pattern matched any `rm` whose target merely contained an 'f' (e.g. `rm draft`),
+    # crying wolf on benign single-file deletes and training reflexive approval.
+    (r"\brm\s+(-\w*[rRfF]\w*|--recursive\b|--force\b)", "recursive/forced file deletion (rm -rf)"),
     (r"\brm\s+-[a-zA-Z]*r[a-zA-Z]*\s+(/|~|\$HOME|\.)\s*$", "recursive delete of a top-level path"),
     (r"\bgit\s+push\b.*(--force\b|-f\b)", "git force-push (rewrites remote history)"),
     (r"\bgit\s+(reset\s+--hard|clean\s+-[a-zA-Z]*f|filter-branch|filter-repo)\b", "git history/working-tree destruction"),
