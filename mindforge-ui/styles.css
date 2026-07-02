@@ -87,6 +87,14 @@ main { position: relative; height: calc(100% - 52px - 38px - 30px); }
 .board-brief small { display: block; font: 10px var(--mono); color: var(--dim);
   letter-spacing: .2em; text-transform: uppercase; margin-top: 3px; }
 
+/* путеводная строка: всегда показывает следующий шаг миссии */
+.guide { display: flex; align-items: center; gap: 12px; background: var(--amber-dim);
+  border: 1px solid rgba(255, 179, 71, .35); border-radius: 9px;
+  padding: 10px 14px; margin-bottom: 16px; font-size: 13.5px; }
+.g-beacon { width: 9px; height: 9px; border-radius: 50%; background: var(--amber);
+  box-shadow: 0 0 10px var(--amber); animation: pulse 1.6s infinite; flex: none; }
+.guide .btn { margin-left: auto; flex: none; }
+
 .lane { position: relative; background: var(--panel); border: 1px solid var(--line);
   border-radius: 10px; padding: 14px 16px 12px; margin-bottom: 12px;
   transition: border-color .3s, box-shadow .3s; }

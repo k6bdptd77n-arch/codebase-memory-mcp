@@ -43,18 +43,18 @@ async function refreshLayers() {
     el.classList.toggle("warn", !!warn);
     document.getElementById(`light-${id}-v`).textContent = value;
   };
-  set("memory", !!l.memory, l.memory ? `${(l.memory.nodes / 1000).toFixed(1)}k nodes` : "offline");
+  set("memory", !!l.memory, l.memory ? `${(l.memory.nodes / 1000).toFixed(1)}k узлов` : "офлайн");
   set("procedure", !!l.procedure,
-    l.procedure ? `${l.procedure.done}/${l.procedure.total}` : "no plan",
+    l.procedure ? `${l.procedure.done}/${l.procedure.total}` : "нет плана",
     l.procedure && l.procedure.done < l.procedure.total);
-  set("brain", l.brain.facts > 0, `${l.brain.facts} facts`);
+  set("brain", l.brain.facts > 0, `${l.brain.facts} фактов`);
 }
 
 // ── autopilot toggle ─────────────────────────────────────────────────────────
 const ap = document.getElementById("autopilot");
 ap.checked = localStorage.getItem("mf-autopilot") === "1";
 const apState = () => {
-  document.getElementById("ap-state").textContent = ap.checked ? "AUTO" : "MANUAL";
+  document.getElementById("ap-state").textContent = ap.checked ? "АВТО" : "РУЧНОЙ";
   document.getElementById("ap-state").classList.toggle("auto", ap.checked);
 };
 ap.addEventListener("change", () => { localStorage.setItem("mf-autopilot", ap.checked ? "1" : "0"); apState(); });

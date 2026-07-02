@@ -34,7 +34,7 @@ window.Views.plan = (() => {
     feature = $("plan-input").value.trim();
     if (!feature) return;
     $("plan-go").disabled = true;
-    $("plan-status").textContent = "planner is reading the brain, then thinking…";
+    $("plan-status").textContent = "планировщик читает память, затем думает…";
     $("plan-live").classList.add("on");
     $("plan-stream").textContent = "";
     $("plan-preview").classList.add("hidden");
@@ -43,7 +43,7 @@ window.Views.plan = (() => {
     $("plan-live").classList.remove("on");
     if (!r.ok) { $("plan-status").textContent = r.error; return; }
     proposed = r.stories;
-    $("plan-status").textContent = `${proposed.length} story(ies) proposed`;
+    $("plan-status").textContent = `предложено сторей: ${proposed.length}`;
     const ol = $("plan-stories");
     ol.innerHTML = "";
     for (const s of proposed) {
@@ -57,8 +57,8 @@ window.Views.plan = (() => {
 
   async function accept(mode) {
     if (!proposed) return;
-    if (mode === "create" && !(await window.mf.confirm("Replace plan",
-      "Creates a NEW flight plan (the current one is replaced). Existing worktrees are untouched."))) return;
+    if (mode === "create" && !(await window.mf.confirm("Заменить план",
+      "Создаёт НОВЫЙ план полёта (текущий будет заменён). Существующие worktree не трогаются."))) return;
     const r = await window.mf.planAccept(feature.slice(0, 90), proposed, mode);
     $("plan-status").textContent = (r.out || r.err || "").split("\n")[0];
     proposed = null;

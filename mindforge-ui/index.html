@@ -18,7 +18,7 @@
       <div class="light" id="light-procedure"><i></i><span>PROCEDURE</span><em id="light-procedure-v">—</em></div>
       <div class="light" id="light-brain"><i></i><span>BRAIN</span><em id="light-brain-v">—</em></div>
     </div>
-    <label class="autopilot" title="auto: after an agent exits, a claude reviewer verdicts the diff and green-gated stories merge themselves">
+    <label class="autopilot" title="АВТО: когда агент заканчивает, claude-ревьюер смотрит диф, и при зелёных тестах стори мержится сама">
       <span class="ap-label">AUTOPILOT</span>
       <input type="checkbox" id="autopilot" />
       <span class="ap-track"><span class="ap-thumb"></span></span>
@@ -28,21 +28,22 @@
 
   <!-- ── tab rail ─────────────────────────────────────────────────────────── -->
   <nav id="tabs">
-    <button class="tab active" data-tab="board">Board</button>
-    <button class="tab" data-tab="plan">Plan</button>
-    <button class="tab" data-tab="brain">Brain</button>
-    <button class="tab" data-tab="metrics">Metrics</button>
-    <button class="tab" data-tab="terminal">Terminal</button>
+    <button class="tab active" data-tab="board">Доска</button>
+    <button class="tab" data-tab="plan">План</button>
+    <button class="tab" data-tab="brain">Мозг</button>
+    <button class="tab" data-tab="metrics">Метрики</button>
+    <button class="tab" data-tab="terminal">Терминал</button>
   </nav>
 
   <main>
     <!-- Board: mission lanes -->
     <section id="view-board" class="view active">
       <div id="board-brief" class="board-brief"></div>
+      <div id="guide" class="guide"><span class="g-beacon"></span><span id="guide-text"></span><button id="guide-cta" class="btn amber small hidden"></button></div>
       <div id="lanes"></div>
       <div id="board-empty" class="empty hidden">
-        <div class="empty-title">No flight plan</div>
-        <div class="empty-hint">Open the Plan tab, describe a feature, and the planner will lay out the stories.</div>
+        <div class="empty-title">Плана полёта нет</div>
+        <div class="empty-hint">Откройте вкладку «План», опишите фичу — планировщик разложит её на стори.</div>
       </div>
     </section>
 
@@ -50,24 +51,24 @@
     <section id="view-plan" class="view">
       <div class="plan-grid">
         <div class="plan-left">
-          <div class="pane-title">Describe the feature</div>
-          <textarea id="plan-input" placeholder="What should be built? The planner reads the project brain first, then lays out 1–4 stories with disjoint file scopes."></textarea>
+          <div class="pane-title">Опишите фичу</div>
+          <textarea id="plan-input" placeholder="Что нужно построить? Планировщик сначала прочитает память проекта, затем разложит задачу на 1–4 стори с непересекающимися файлами."></textarea>
           <div class="plan-actions">
-            <button id="plan-go" class="btn amber">Plan it</button>
+            <button id="plan-go" class="btn amber">Спланировать</button>
             <span id="plan-status" class="status-line"></span>
           </div>
           <div id="plan-preview" class="plan-preview hidden">
-            <div class="pane-title">Proposed stories — review before accepting</div>
+            <div class="pane-title">Предложенные стори — проверьте перед принятием</div>
             <ol id="plan-stories"></ol>
             <div class="plan-actions">
-              <button id="plan-accept" class="btn teal">Accept → new plan</button>
-              <button id="plan-append" class="btn ghost">Append to current plan</button>
-              <button id="plan-discard" class="btn ghost">Discard</button>
+              <button id="plan-accept" class="btn teal">Принять → новый план</button>
+              <button id="plan-append" class="btn ghost">Добавить к текущему плану</button>
+              <button id="plan-discard" class="btn ghost">Отклонить</button>
             </div>
           </div>
         </div>
         <div class="plan-right">
-          <div class="pane-title">Planner thinking <span class="live-dot" id="plan-live"></span></div>
+          <div class="pane-title">Мышление планировщика <span class="live-dot" id="plan-live"></span></div>
           <pre id="plan-stream" class="stream"></pre>
         </div>
       </div>
@@ -78,16 +79,16 @@
       <div class="brain-grid">
         <div class="brain-left">
           <div class="brain-toolbar">
-            <input id="brain-q" placeholder="recall the project memory…" />
-            <button id="brain-search" class="btn ghost">Recall</button>
-            <button id="brain-prune" class="btn ghost danger-ghost">Prune expired…</button>
+            <input id="brain-q" placeholder="спросить память проекта…" />
+            <button id="brain-search" class="btn ghost">Вспомнить</button>
+            <button id="brain-prune" class="btn ghost danger-ghost">Почистить протухшее…</button>
           </div>
           <div id="brain-recall-out" class="recall-out hidden"></div>
-          <div class="pane-title">Facts <em id="brain-count"></em></div>
+          <div class="pane-title">Факты <em id="brain-count"></em></div>
           <div id="facts"></div>
         </div>
         <div class="brain-right">
-          <div class="pane-title">Episodes — how past tasks actually ended</div>
+          <div class="pane-title">Эпизоды — чем реально закончились прошлые задачи</div>
           <div id="episode-list"></div>
         </div>
       </div>
@@ -99,11 +100,11 @@
         <div id="metric-cards" class="metric-cards"></div>
         <div class="metrics-cols">
           <div>
-            <div class="pane-title">Locked spec</div>
+            <div class="pane-title">Залоченная спека</div>
             <div id="spec-view" class="spec-view"></div>
           </div>
           <div>
-            <div class="pane-title">Ledger — latest events</div>
+            <div class="pane-title">Леджер — последние события</div>
             <div id="ledger-view" class="ledger-view"></div>
           </div>
         </div>
@@ -129,13 +130,13 @@
   <!-- review drawer (slides over the board) -->
   <aside id="drawer" class="drawer hidden">
     <div class="drawer-head">
-      <span id="drawer-title">Review</span>
-      <button id="drawer-close" class="btn ghost">Close</button>
+      <span id="drawer-title">Проверка</span>
+      <button id="drawer-close" class="btn ghost">Закрыть</button>
     </div>
     <pre id="drawer-body" class="stream"></pre>
     <div class="drawer-actions">
-      <button id="drawer-approve" class="btn teal">Approve — gate, merge, clean up</button>
-      <button id="drawer-fail" class="btn red">Fail — send back</button>
+      <button id="drawer-approve" class="btn teal">Принять — тесты, merge, уборка</button>
+      <button id="drawer-fail" class="btn red">Провалить — вернуть</button>
     </div>
     <div id="drawer-progress" class="drawer-progress"></div>
   </aside>
