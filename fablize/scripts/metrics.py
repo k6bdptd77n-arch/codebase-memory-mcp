@@ -10,16 +10,25 @@ Usage:
   metrics.py              # human-readable summary
   metrics.py --json       # machine-readable
   metrics.py --since 2026-06-01   # only events on/after this ISO date
+  metrics.py --project ~/work/app # only events whose cwd is this path or under it
 """
 import argparse
 import json
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePath
 
 GLOBAL_LOG = Path.home() / ".fablize" / "events.jsonl"
 
 
-def read_events(since=""):
+def in_project(cwd, project):
+    """True if cwd equals project or lies under it (pure path comparison, no filesystem)."""
+    if not cwd:
+        return False
+    c, p = PurePath(cwd), PurePath(project)
+    return c == p or p in c.parents
+
+
+def read_events(since="", project=""):
     if not GLOBAL_LOG.exists():
         return []
     out = []
@@ -34,6 +43,8 @@ def read_events(since=""):
         except ValueError:
             continue
         if since and rec.get("ts", "") < since:
+            continue
+        if project and not in_project(rec.get("cwd", ""), project):
             continue
         out.append(rec)
     return out
@@ -81,15 +92,20 @@ def main():
     p = argparse.ArgumentParser(prog="metrics.py")
     p.add_argument("--json", action="store_true")
     p.add_argument("--since", default="")
+    p.add_argument("--project", default="", metavar="PATH",
+                   help="only events whose cwd equals PATH or is under it")
     a = p.parse_args()
-    s = summarize(read_events(a.since))
+    # normalize the CLI path once (~ and relative paths) so event cwds compare lexically
+    project = str(Path(a.project).expanduser().resolve()) if a.project else ""
+    s = summarize(read_events(a.since, project))
     if a.json:
         print(json.dumps(s, ensure_ascii=False, indent=2))
         return
     if not s["events_total"]:
         print("fablize: no events yet (~/.fablize/events.jsonl is empty). Run a goals/spec flow first.")
         return
-    print(f"fablize metrics{(' since ' + a.since) if a.since else ''} — {s['events_total']} events across {s['projects']} project(s)")
+    scope = (f" since {a.since}" if a.since else "") + (f" for {project}" if project else "")
+    print(f"fablize metrics{scope} — {s['events_total']} events across {s['projects']} project(s)")
     print(f"  plans created     : {s['plans_created']}")
     print(f"  stories started   : {s['stories_started']}")
     print(f"  checkpoints       : {s['checkpoints']}  {s['checkpoint_status']}")
