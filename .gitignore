@@ -59,3 +59,12 @@ soak-results/
 
 # LSP originality-check reference cache (scripts/check-lsp-originality.sh)
 .lsp-refs/
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+
+# fablize runtime state (per-project ledger/spec/goals/brain — local by default)
+.fablize/

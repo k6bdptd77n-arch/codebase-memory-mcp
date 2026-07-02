@@ -1,0 +1,19 @@
+{
+  "name": "mindforge-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MindForge desktop UI — a Claude Code-style GUI with an integrated terminal (real PTY) and live explanation panels (reasoning/steps, annotated commands, MindForge layer state, file diffs).",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "shot": "electron . --shot"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "node-pty": "^1.0.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

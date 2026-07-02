@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MindForge</title>
+  <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header id="bar">
+    <span class="logo">◆ MindForge</span>
+    <span class="sub">integrated terminal · live explanations</span>
+    <span id="status" class="status">●&nbsp;ready</span>
+  </header>
+
+  <main id="split">
+    <section id="left">
+      <div class="pane-title">TERMINAL <span class="hint">— real PTY · type <code>claude</code> to start the agent</span></div>
+      <div id="term"></div>
+    </section>
+
+    <aside id="right">
+      <div class="panel">
+        <div class="panel-head">① Reasoning &amp; decisions <span class="src">live agent stream · brain traces</span></div>
+        <div class="agent-bar">
+          <input id="agent-input" placeholder="Give the agent a task — watch it think &amp; decide…" />
+          <label class="auto" title="Let the agent actually run tools (skip permission prompts)"><input type="checkbox" id="agent-auto" /> auto</label>
+          <button id="agent-go">Run</button>
+        </div>
+        <div id="p-stream" class="panel-body stream"><div class="muted">Type a task above and press Run — every thought, decision and tool call streams here live.</div></div>
+        <details class="traces-fold"><summary>past session traces</summary><div id="p-reason" class="panel-body">…</div></details>
+      </div>
+      <div class="panel">
+        <div class="panel-head">② Terminal commands <span class="src">annotated as you run them</span></div>
+        <div id="p-cmds" class="panel-body"><div class="muted">Run a command in the terminal — it appears here with a short explanation.</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">③ MindForge layers <span class="src">brain · goals · memory graph</span></div>
+        <div id="p-layers" class="panel-body">…</div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">④ File diffs <span class="src">git diff</span></div>
+        <div id="p-diff" class="panel-body">…</div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
