@@ -13,11 +13,37 @@ State directory: ./.fablize/ (run from the repo root)
 """
 import argparse
 import json
+import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-DIR = Path(".fablize")
+
+def state_root(base="."):
+    """Where project state lives. A linked git worktree resolves to the MAIN checkout —
+    spec/goals/brain are per-project, not per-checkout — so parallel worktree agents share
+    one state. Set FABLIZE_STATE to a directory to isolate state explicitly."""
+    env = os.environ.get("FABLIZE_STATE")
+    if env:
+        return Path(env)
+    dotgit = Path(base) / ".git"
+    if dotgit.is_file():  # linked worktree: .git is a pointer file, not a directory
+        try:
+            m = re.search(r"gitdir:\s*(.+)", dotgit.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            m = None
+        if m:
+            gitdir = Path(m.group(1).strip())
+            if not gitdir.is_absolute():
+                gitdir = Path(base) / gitdir
+            parts = gitdir.parts
+            if "worktrees" in parts:
+                return Path(*parts[: parts.index("worktrees")]).parent  # …/.git/worktrees/X → repo root
+    return Path(base)
+
+
+DIR = state_root() / ".fablize"
 SPEC = DIR / "spec.json"
 LEDGER = DIR / "ledger.jsonl"
 GLOBAL_LOG = Path.home() / ".fablize" / "events.jsonl"
@@ -28,10 +54,13 @@ def now():
 
 
 def log(event, **kw):
-    DIR.mkdir(exist_ok=True)
     rec = {"ts": now(), "event": event, **kw}
-    with open(LEDGER, "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    try:
+        DIR.mkdir(parents=True, exist_ok=True)
+        with open(LEDGER, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # local ledger is best-effort too — never crash the engine on an unwritable dir
     try:
         GLOBAL_LOG.parent.mkdir(exist_ok=True)
         with open(GLOBAL_LOG, "a", encoding="utf-8") as f:
@@ -57,7 +86,7 @@ def cmd_lock(a):
         "constraints": [c.strip() for c in a.constraint if c.strip()],
         "decisions": decisions,
     }
-    DIR.mkdir(exist_ok=True)
+    DIR.mkdir(parents=True, exist_ok=True)
     SPEC.write_text(json.dumps(spec, ensure_ascii=False, indent=1), encoding="utf-8")
     log("spec_locked", reqs=len(reqs), constraints=len(spec["constraints"]), decisions=len(decisions))
     print(f"fablize: spec locked — {len(reqs)} requirement(s), {len(decisions)} decision(s) → {SPEC}")
@@ -68,7 +97,10 @@ def cmd_show(a):
     if not SPEC.exists():
         print("fablize: no locked spec yet. After clarifying, record it with `spec.py lock`.")
         return
-    spec = json.loads(SPEC.read_text(encoding="utf-8"))
+    try:
+        spec = json.loads(SPEC.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        sys.exit(f"fablize: {SPEC} is corrupt or unreadable — fix or delete it, then re-lock the spec.")
     print(f"fablize: locked spec — {spec.get('brief') or '(no brief)'}  [locked {spec.get('locked','?')}]")
     if spec.get("requirements"):
         print("Requirements:")

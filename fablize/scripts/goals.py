@@ -17,11 +17,37 @@ State directory: ./.fablize/ (run from the repo root)
 """
 import argparse
 import json
+import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-DIR = Path(".fablize")
+
+def state_root(base="."):
+    """Where project state lives. A linked git worktree resolves to the MAIN checkout —
+    spec/goals/brain are per-project, not per-checkout — so parallel worktree agents share
+    one state. Set FABLIZE_STATE to a directory to isolate state explicitly."""
+    env = os.environ.get("FABLIZE_STATE")
+    if env:
+        return Path(env)
+    dotgit = Path(base) / ".git"
+    if dotgit.is_file():  # linked worktree: .git is a pointer file, not a directory
+        try:
+            m = re.search(r"gitdir:\s*(.+)", dotgit.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            m = None
+        if m:
+            gitdir = Path(m.group(1).strip())
+            if not gitdir.is_absolute():
+                gitdir = Path(base) / gitdir
+            parts = gitdir.parts
+            if "worktrees" in parts:
+                return Path(*parts[: parts.index("worktrees")]).parent  # …/.git/worktrees/X → repo root
+    return Path(base)
+
+
+DIR = state_root() / ".fablize"
 GOALS = DIR / "goals.json"
 LEDGER = DIR / "ledger.jsonl"
 # Global, cross-project event stream for observability (metrics.py reads this).
@@ -34,10 +60,13 @@ def now():
 
 
 def log(event, **kw):
-    DIR.mkdir(exist_ok=True)
     rec = {"ts": now(), "event": event, **kw}
-    with open(LEDGER, "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    try:
+        DIR.mkdir(parents=True, exist_ok=True)
+        with open(LEDGER, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # local ledger is best-effort too — never crash the engine on an unwritable dir
     try:
         GLOBAL_LOG.parent.mkdir(exist_ok=True)
         with open(GLOBAL_LOG, "a", encoding="utf-8") as f:
@@ -49,11 +78,14 @@ def log(event, **kw):
 def load():
     if not GOALS.exists():
         sys.exit("fablize: no plan — run `create` from the repo root first.")
-    return json.loads(GOALS.read_text(encoding="utf-8"))
+    try:
+        return json.loads(GOALS.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        sys.exit(f"fablize: {GOALS} is corrupt or unreadable — fix or delete it, then re-create the plan.")
 
 
 def save(plan):
-    DIR.mkdir(exist_ok=True)
+    DIR.mkdir(parents=True, exist_ok=True)
     GOALS.write_text(json.dumps(plan, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
@@ -84,10 +116,10 @@ def cmd_next(a):
     else:
         pending = [g for g in plan["goals"] if g["status"] == "pending"]
         if not pending:
-            blocked = [g for g in plan["goals"] if g["status"] == "blocked"]
-            if blocked:
-                print(f"fablize: no pending stories, but {len(blocked)} blocked — reopen one with "
-                      f"`retry --id {blocked[0]['id']}` or report the blocker.")
+            stuck = [g for g in plan["goals"] if g["status"] in ("blocked", "failed")]
+            if stuck:
+                print(f"fablize: no pending stories, but {len(stuck)} failed/blocked — reopen one with "
+                      f"`retry --id {stuck[0]['id']}` or report the blocker.")
             else:
                 print("fablize: all stories complete ✓")
             return
@@ -152,8 +184,16 @@ def cmd_checkpoint(a):
         print("     (symptoms, attempts, failure point, repro);")
         print("  3) otherwise report the limit honestly and name where a human must step in.")
         return
-    remaining = [x for x in plan["goals"] if x["status"] in ("pending", "in_progress")]
-    print("fablize: all stories complete ✓" if not remaining else f"fablize: {len(remaining)} stories left — continue with `next`.")
+    # "all complete" must mean every story is COMPLETE — a failed/blocked story is NOT done, so
+    # count anything non-complete as remaining (was: only pending/in_progress, which falsely
+    # declared success while a story sat failed/blocked).
+    incomplete = [x for x in plan["goals"] if x["status"] != "complete"]
+    if not incomplete:
+        print("fablize: all stories complete ✓")
+    else:
+        unresolved = [x for x in incomplete if x["status"] in ("failed", "blocked")]
+        tail = f" ({len(unresolved)} failed/blocked — retry or report)" if unresolved else ""
+        print(f"fablize: {len(incomplete)} stories left{tail} — continue with `next`.")
 
 
 def cmd_status(a):
