@@ -20,8 +20,8 @@ for (const tab of document.querySelectorAll(".tab")) {
 const term = new Terminal({
   fontFamily: '"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace',
   fontSize: 12.5, cursorBlink: true,
-  theme: { background: "#070B16", foreground: "#E7EDF9", cursor: "#FFB347",
-           selectionBackground: "#1C2A47", brightGreen: "#4FD6BE", yellow: "#FFB347" },
+  theme: { background: "#181818", foreground: "#CCCCCC", cursor: "#3B82F6",
+           selectionBackground: "#2B2B2E", brightGreen: "#57AB5A", yellow: "#D7BA7D" },
 });
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
@@ -54,7 +54,7 @@ async function refreshLayers() {
 const ap = document.getElementById("autopilot");
 ap.checked = localStorage.getItem("mf-autopilot") === "1";
 const apState = () => {
-  document.getElementById("ap-state").textContent = ap.checked ? "АВТО" : "РУЧНОЙ";
+  document.getElementById("ap-state").textContent = ap.checked ? "Автопилот" : "Ручной режим";
   document.getElementById("ap-state").classList.toggle("auto", ap.checked);
 };
 ap.addEventListener("change", () => { localStorage.setItem("mf-autopilot", ap.checked ? "1" : "0"); apState(); });

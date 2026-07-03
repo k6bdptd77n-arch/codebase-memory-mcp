@@ -243,7 +243,7 @@ window.Views.settings = (() => {
   }
 
   function applyTheme(t) {
-    document.body.classList.toggle("theme-cursor", t === "cursor");
+    document.body.classList.toggle("theme-deck", t === "deck");
     localStorage.setItem("mf-theme", t);
     document.querySelectorAll(".theme-card").forEach((c) =>
       c.classList.toggle("on", c.dataset.theme === t));

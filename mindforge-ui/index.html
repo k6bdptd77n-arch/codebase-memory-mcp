@@ -7,179 +7,178 @@
   <link rel="stylesheet" href="fonts/fonts.css" />
   <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
   <link rel="stylesheet" href="styles.css" />
-  <title>MindForge Control</title>
+  <title>MindForge</title>
 </head>
 <body>
-  <!-- ── header: wordmark · layer indicators · autopilot ─────────────────── -->
-  <header id="deck-header">
-    <div class="wordmark"><span class="wm-mind">MIND</span><span class="wm-forge">FORGE</span><span class="wm-sub">control</span></div>
-    <div id="layer-lights" class="layer-lights">
-      <div class="light" id="light-memory"><i></i><span>MEMORY</span><em id="light-memory-v">—</em></div>
-      <div class="light" id="light-procedure"><i></i><span>PROCEDURE</span><em id="light-procedure-v">—</em></div>
-      <div class="light" id="light-brain"><i></i><span>BRAIN</span><em id="light-brain-v">—</em></div>
-    </div>
-    <button id="crew-badge" class="crew-badge" title="Экипаж: модели ролей — нажмите, чтобы настроить"></button>
-    <label class="autopilot" title="АВТО: когда агент заканчивает, claude-ревьюер смотрит диф, и при зелёных тестах стори мержится сама">
-      <span class="ap-label">AUTOPILOT</span>
-      <input type="checkbox" id="autopilot" />
-      <span class="ap-track"><span class="ap-thumb"></span></span>
-      <span class="ap-state" id="ap-state">MANUAL</span>
-    </label>
-  </header>
+  <!-- ── titlebar (тонкий, как в VS Code / Cursor) ────────────────────────── -->
+  <div id="titlebar"><span id="title-text">MindForge — fablize-memory-mcp</span></div>
 
-  <!-- ── tab rail ─────────────────────────────────────────────────────────── -->
-  <nav id="tabs">
-    <button class="tab active" data-tab="board">Доска</button>
-    <button class="tab" data-tab="plan">План</button>
-    <button class="tab" data-tab="brain">Мозг</button>
-    <button class="tab" data-tab="metrics">Метрики</button>
-    <button class="tab" data-tab="settings">Настройки</button>
-    <button class="tab" data-tab="terminal">Терминал</button>
-  </nav>
-
-  <main>
-    <!-- Board: mission lanes -->
-    <section id="view-board" class="view active">
-      <div id="board-brief" class="board-brief"></div>
-      <div id="guide" class="guide"><span class="g-beacon"></span><span id="guide-text"></span><button id="guide-cta" class="btn amber small hidden"></button></div>
-      <div id="lanes"></div>
-      <div id="board-empty" class="empty hidden">
-        <div class="empty-title">Плана полёта нет</div>
-        <div class="empty-hint">Откройте вкладку «План», опишите фичу — планировщик разложит её на стори.</div>
+  <div id="shell">
+    <!-- ── sidebar: навигация как в Cursor ──────────────────────────────── -->
+    <aside id="sidebar">
+      <nav id="tabs">
+        <button class="tab active" data-tab="board"><span class="tab-ico">▤</span>Доска</button>
+        <button class="tab" data-tab="plan"><span class="tab-ico">✎</span>План</button>
+        <button class="tab" data-tab="brain"><span class="tab-ico">◉</span>Мозг</button>
+        <button class="tab" data-tab="metrics"><span class="tab-ico">∿</span>Метрики</button>
+        <button class="tab" data-tab="settings"><span class="tab-ico">⚙</span>Настройки</button>
+        <button class="tab" data-tab="terminal"><span class="tab-ico">❯</span>Терминал</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button id="crew-badge" class="crew-badge" title="Экипаж: модели ролей — нажмите, чтобы настроить"></button>
+        <label class="autopilot" title="АВТО: когда агент заканчивает, claude-ревьюер смотрит диф, и при зелёных тестах стори мержится сама">
+          <input type="checkbox" id="autopilot" />
+          <span class="ap-track"><span class="ap-thumb"></span></span>
+          <span class="ap-state" id="ap-state">Ручной режим</span>
+        </label>
       </div>
-    </section>
+    </aside>
 
-    <!-- Plan: feature → stories -->
-    <section id="view-plan" class="view">
-      <div class="plan-grid">
-        <div class="plan-left">
-          <div class="pane-title">Опишите фичу</div>
-          <textarea id="plan-input" placeholder="Что нужно построить? Планировщик сначала прочитает память проекта, затем разложит задачу на 1–4 стори с непересекающимися файлами."></textarea>
-          <div class="plan-actions">
-            <button id="plan-go" class="btn amber">Спланировать</button>
-            <span id="plan-status" class="status-line"></span>
-          </div>
-          <div id="plan-preview" class="plan-preview hidden">
-            <div class="pane-title">Предложенные стори — проверьте перед принятием</div>
-            <ol id="plan-stories"></ol>
+    <main>
+      <!-- Board -->
+      <section id="view-board" class="view active">
+        <div id="board-brief" class="board-brief"></div>
+        <div id="guide" class="guide"><span class="g-beacon"></span><span id="guide-text"></span><button id="guide-cta" class="btn primary small hidden"></button></div>
+        <div id="lanes"></div>
+        <div id="board-empty" class="empty hidden">
+          <div class="empty-title">Плана нет</div>
+          <div class="empty-hint">Откройте «План», опишите фичу — планировщик разложит её на стори.</div>
+        </div>
+      </section>
+
+      <!-- Plan -->
+      <section id="view-plan" class="view">
+        <div class="plan-grid">
+          <div class="plan-left">
+            <div class="pane-title">Опишите фичу</div>
+            <textarea id="plan-input" placeholder="Что нужно построить? Планировщик сначала прочитает память проекта, затем разложит задачу на 1–4 стори с непересекающимися файлами."></textarea>
             <div class="plan-actions">
-              <button id="plan-accept" class="btn teal">Принять → новый план</button>
-              <button id="plan-append" class="btn ghost">Добавить к текущему плану</button>
-              <button id="plan-discard" class="btn ghost">Отклонить</button>
+              <button id="plan-go" class="btn primary">Спланировать</button>
+              <span id="plan-status" class="status-line"></span>
             </div>
-          </div>
-        </div>
-        <div class="plan-right">
-          <div class="pane-title">Мышление планировщика <span class="live-dot" id="plan-live"></span></div>
-          <pre id="plan-stream" class="stream"></pre>
-        </div>
-      </div>
-    </section>
-
-    <!-- Brain: facts · episodes · prune -->
-    <section id="view-brain" class="view">
-      <div class="brain-grid">
-        <div class="brain-left">
-          <div class="brain-toolbar">
-            <input id="brain-q" placeholder="спросить память проекта…" />
-            <button id="brain-search" class="btn ghost">Вспомнить</button>
-            <button id="brain-prune" class="btn ghost danger-ghost">Почистить протухшее…</button>
-          </div>
-          <div id="brain-recall-out" class="recall-out hidden"></div>
-          <div class="pane-title">Факты <em id="brain-count"></em></div>
-          <div id="facts"></div>
-        </div>
-        <div class="brain-right">
-          <div class="pane-title">Эпизоды — чем реально закончились прошлые задачи</div>
-          <div id="episode-list"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Metrics: telemetry + locked spec -->
-    <section id="view-metrics" class="view">
-      <div class="metrics-grid">
-        <div id="metric-cards" class="metric-cards"></div>
-        <div class="metrics-cols">
-          <div>
-            <div class="pane-title">Залоченная спека</div>
-            <div id="spec-view" class="spec-view"></div>
-          </div>
-          <div>
-            <div class="pane-title">Леджер — последние события</div>
-            <div id="ledger-view" class="ledger-view"></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Settings (Cursor-style: left nav + sections) -->
-    <section id="view-settings" class="view">
-      <div class="settings-grid">
-        <nav id="settings-nav">
-          <div class="snav-title">Настройки</div>
-          <button class="snav active" data-sec="crew">Экипаж</button>
-          <button class="snav" data-sec="models">Модели и провайдеры</button>
-          <button class="snav" data-sec="mcp">MCP-серверы</button>
-          <button class="snav" data-sec="appearance">Оформление</button>
-          <div class="snav-footer">
-            <span id="crew-status" class="status-line"></span>
-            <button id="crew-save" class="btn amber small" disabled>Сохранить</button>
-          </div>
-        </nav>
-        <div id="settings-body">
-          <div id="sec-crew" class="sec active">
-            <div class="sec-head">Экипаж</div>
-            <div class="sec-sub">Кто чем занимается и с какими инструментами. Применяется к следующему запуску агента.</div>
-            <div id="crew-cards" class="crew-cards"></div>
-          </div>
-          <div id="sec-models" class="sec">
-            <div class="sec-head">Модели и провайдеры</div>
-            <div class="sec-sub">Внешние провайдеры доступны думающим ролям (Планировщик, Мозг). Рука всегда работает через CLI-агента в worktree — её модель задаётся в карточке роли.</div>
-            <div id="provider-cards"></div>
-          </div>
-          <div id="sec-mcp" class="sec">
-            <div class="sec-head">MCP-серверы</div>
-            <div class="sec-sub">Список серверов из конфигурации claude. Вкл/выкл для конкретной роли — в разделе «Экипаж». Добавить новый: <code>claude mcp add &lt;имя&gt; &lt;команда&gt;</code> в терминале.</div>
-            <div id="mcp-list"></div>
-          </div>
-          <div id="sec-appearance" class="sec">
-            <div class="sec-head">Оформление</div>
-            <div class="sec-sub">Применяется мгновенно, сохраняется на этой машине.</div>
-            <div class="theme-cards">
-              <div class="theme-card" data-theme="cursor">
-                <div class="th-name">Cursor</div>
-                <div class="th-desc">нейтральный графит, системный шрифт, синий акцент</div>
-                <div class="th-strip"><i style="background:#1A1A1A;border:1px solid #333"></i><i style="background:#4F8FF7"></i><i style="background:#3FB950"></i></div>
-              </div>
-              <div class="theme-card" data-theme="deck">
-                <div class="th-name">Flight Deck</div>
-                <div class="th-desc">космос, приборный янтарь, телеметрийная бирюза</div>
-                <div class="th-strip"><i style="background:#0A0F1E;border:1px solid #1C2A47"></i><i style="background:#FFB347"></i><i style="background:#4FD6BE"></i></div>
+            <div id="plan-preview" class="plan-preview hidden">
+              <div class="pane-title">Предложенные стори — проверьте перед принятием</div>
+              <ol id="plan-stories"></ol>
+              <div class="plan-actions">
+                <button id="plan-accept" class="btn ok">Принять → новый план</button>
+                <button id="plan-append" class="btn ghost">Добавить к текущему</button>
+                <button id="plan-discard" class="btn ghost">Отклонить</button>
               </div>
             </div>
           </div>
+          <div class="plan-right">
+            <div class="pane-title">Мышление планировщика <span class="live-dot" id="plan-live"></span></div>
+            <pre id="plan-stream" class="stream"></pre>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- Terminal -->
-    <section id="view-terminal" class="view">
-      <div id="term"></div>
-    </section>
-  </main>
+      <!-- Brain -->
+      <section id="view-brain" class="view">
+        <div class="brain-grid">
+          <div class="brain-left">
+            <div class="brain-toolbar">
+              <input id="brain-q" placeholder="спросить память проекта…" />
+              <button id="brain-search" class="btn ghost">Вспомнить</button>
+              <button id="brain-prune" class="btn ghost danger-ghost">Почистить протухшее…</button>
+            </div>
+            <div id="brain-recall-out" class="recall-out hidden"></div>
+            <div class="pane-title">Факты <em id="brain-count"></em></div>
+            <div id="facts"></div>
+          </div>
+          <div class="brain-right">
+            <div class="pane-title">Эпизоды — чем закончились прошлые задачи</div>
+            <div id="episode-list"></div>
+          </div>
+        </div>
+      </section>
 
-  <!-- ── telemetry footer ─────────────────────────────────────────────────── -->
-  <footer id="telemetry">
-    <span id="tm-plan">—</span>
-    <span class="tm-sep"></span>
-    <span id="tm-agents">agents: 0</span>
-    <span class="tm-sep"></span>
-    <span id="tm-note" class="tm-note"></span>
-    <span class="tm-clock" id="tm-clock"></span>
+      <!-- Metrics -->
+      <section id="view-metrics" class="view">
+        <div class="metrics-grid">
+          <div id="metric-cards" class="metric-cards"></div>
+          <div class="metrics-cols">
+            <div>
+              <div class="pane-title">Залоченная спека</div>
+              <div id="spec-view" class="spec-view"></div>
+            </div>
+            <div>
+              <div class="pane-title">Леджер — последние события</div>
+              <div id="ledger-view" class="ledger-view"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings -->
+      <section id="view-settings" class="view">
+        <div class="settings-grid">
+          <nav id="settings-nav">
+            <button class="snav active" data-sec="crew">Экипаж</button>
+            <button class="snav" data-sec="models">Модели и провайдеры</button>
+            <button class="snav" data-sec="mcp">MCP-серверы</button>
+            <button class="snav" data-sec="appearance">Оформление</button>
+            <div class="snav-footer">
+              <span id="crew-status" class="status-line"></span>
+              <button id="crew-save" class="btn primary small" disabled>Сохранить</button>
+            </div>
+          </nav>
+          <div id="settings-body">
+            <div id="sec-crew" class="sec active">
+              <div class="sec-head">Экипаж</div>
+              <div class="sec-sub">Кто чем занимается и с какими инструментами. Применяется к следующему запуску агента.</div>
+              <div id="crew-cards" class="crew-cards"></div>
+            </div>
+            <div id="sec-models" class="sec">
+              <div class="sec-head">Модели и провайдеры</div>
+              <div class="sec-sub">Внешние провайдеры доступны думающим ролям (Планировщик, Мозг). Рука всегда работает через CLI-агента в worktree.</div>
+              <div id="provider-cards"></div>
+            </div>
+            <div id="sec-mcp" class="sec">
+              <div class="sec-head">MCP-серверы</div>
+              <div class="sec-sub">Список серверов из конфигурации claude. Вкл/выкл для конкретной роли — в разделе «Экипаж». Добавить: <code>claude mcp add &lt;имя&gt; &lt;команда&gt;</code>.</div>
+              <div id="mcp-list"></div>
+            </div>
+            <div id="sec-appearance" class="sec">
+              <div class="sec-head">Оформление</div>
+              <div class="sec-sub">Применяется мгновенно, сохраняется на этой машине.</div>
+              <div class="theme-cards">
+                <div class="theme-card" data-theme="cursor">
+                  <div class="th-name">Cursor</div>
+                  <div class="th-desc">нейтральный графит, системный шрифт, синий акцент</div>
+                  <div class="th-strip"><i style="background:#181818;border:1px solid #2b2b2b"></i><i style="background:#3B82F6"></i><i style="background:#2EA043"></i></div>
+                </div>
+                <div class="theme-card" data-theme="deck">
+                  <div class="th-name">Flight Deck</div>
+                  <div class="th-desc">космос, приборный янтарь, телеметрийная бирюза</div>
+                  <div class="th-strip"><i style="background:#0A0F1E;border:1px solid #1C2A47"></i><i style="background:#FFB347"></i><i style="background:#4FD6BE"></i></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Terminal -->
+      <section id="view-terminal" class="view">
+        <div id="term"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ── statusbar (тонкий, как в VS Code) ────────────────────────────────── -->
+  <footer id="statusbar">
+    <span class="sb-item" id="light-memory"><i></i>Память <em id="light-memory-v">—</em></span>
+    <span class="sb-item" id="light-procedure"><i></i>План <em id="light-procedure-v">—</em></span>
+    <span class="sb-item" id="light-brain"><i></i>Мозг <em id="light-brain-v">—</em></span>
+    <span class="sb-flex"></span>
+    <span class="sb-item" id="tm-note"></span>
+    <span class="sb-item" id="tm-plan">—</span>
+    <span class="sb-item" id="tm-agents">агентов: 0</span>
+    <span class="sb-item" id="tm-clock"></span>
   </footer>
 
-  <!-- review drawer (slides over the board) -->
+  <!-- review drawer -->
   <aside id="drawer" class="drawer hidden">
     <div class="drawer-head">
       <span id="drawer-title">Проверка</span>
@@ -187,8 +186,8 @@
     </div>
     <pre id="drawer-body" class="stream"></pre>
     <div class="drawer-actions">
-      <button id="drawer-approve" class="btn teal">Принять — тесты, merge, уборка</button>
-      <button id="drawer-fail" class="btn red">Провалить — вернуть</button>
+      <button id="drawer-approve" class="btn ok">Принять — тесты, merge, уборка</button>
+      <button id="drawer-fail" class="btn danger">Провалить — вернуть</button>
     </div>
     <div id="drawer-progress" class="drawer-progress"></div>
   </aside>
