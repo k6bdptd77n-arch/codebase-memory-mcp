@@ -20,8 +20,8 @@ for (const tab of document.querySelectorAll(".tab")) {
 const term = new Terminal({
   fontFamily: '"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace',
   fontSize: 12.5, cursorBlink: true,
-  theme: { background: "#181818", foreground: "#CCCCCC", cursor: "#3B82F6",
-           selectionBackground: "#2B2B2E", brightGreen: "#57AB5A", yellow: "#D7BA7D" },
+  theme: { background: "#131316", foreground: "#D6D6D9", cursor: "#ECECEE",
+           selectionBackground: "#2A2A2E", brightGreen: "#3FB950", yellow: "#D9A03F" },
 });
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
