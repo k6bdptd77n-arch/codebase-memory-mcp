@@ -56,6 +56,88 @@ async function refreshLayers() {
 // ── "Открыть 3D-граф" — statusbar action (URL is hardcoded in main) ──────────
 document.getElementById("open-graph").addEventListener("click", () => window.mf.openGraph());
 
+// ── project switcher (titlebar) ──────────────────────────────────────────────
+const projBtn = document.getElementById("proj-btn");
+const projMenu = document.getElementById("proj-menu");
+
+async function refreshProject() {
+  try {
+    const info = await window.mf.projectInfo();
+    document.getElementById("title-text").textContent = "MindForge";
+    projBtn.querySelector(".proj-name").textContent = info.name;
+    buildProjMenu(info);
+  } catch {}
+}
+
+function buildProjMenu(info) {
+  projMenu.innerHTML = "";
+  const item = (label, fn, cls = "") => {
+    const b = document.createElement("button");
+    b.className = "proj-item " + cls;
+    b.textContent = label;
+    b.addEventListener("click", () => { hideProjMenu(); fn(); });
+    projMenu.appendChild(b);
+    return b;
+  };
+  info.recents.forEach((r, i) => {
+    const b = item(r.name, () => window.mf.projectRecent(i));
+    b.title = r.dir;
+    if (r.dir === info.dir) b.classList.add("on");
+  });
+  if (info.recents.length) {
+    const hr = document.createElement("div"); hr.className = "proj-sep"; projMenu.appendChild(hr);
+  }
+  item("Открыть папку…", () => window.mf.projectOpen());
+  item("Новый проект…", () => showProjModal());
+}
+
+function hideProjMenu() { projMenu.classList.add("hidden"); }
+projBtn.addEventListener("click", (e) => { e.stopPropagation(); projMenu.classList.toggle("hidden"); });
+document.addEventListener("click", (e) => { if (!projMenu.contains(e.target)) hideProjMenu(); });
+
+// ── new-project modal (name only; the parent folder is a native dialog in main) ──
+const projModal = document.getElementById("proj-modal");
+const projName = document.getElementById("proj-name");
+const projErr = document.getElementById("proj-err");
+function showProjModal() {
+  projErr.classList.add("hidden");
+  projName.value = "";
+  projModal.classList.remove("hidden");
+  projName.focus();
+}
+function hideProjModal() { projModal.classList.add("hidden"); }
+document.getElementById("proj-create-cancel").addEventListener("click", hideProjModal);
+projModal.addEventListener("click", (e) => { if (e.target === projModal) hideProjModal(); });
+async function submitProjCreate() {
+  const name = projName.value.trim();
+  projErr.classList.add("hidden");
+  if (!name) { projErr.textContent = "введите имя проекта"; projErr.classList.remove("hidden"); return; }
+  const btn = document.getElementById("proj-create-go");
+  btn.disabled = true; btn.textContent = "создаю…";
+  try {
+    const r = await window.mf.projectCreate(name);
+    if (r.ok) {
+      hideProjModal();
+      if (r.warning) document.getElementById("tm-note").textContent = "⚠ " + r.warning;
+    } else if (!r.canceled) {
+      projErr.textContent = r.error || ((r.steps || []).filter((s) => !s.ok).map((s) => `${s.name}: ${s.out}`).join("; ")) || "не удалось создать";
+      projErr.classList.remove("hidden");
+    }
+  } finally { btn.disabled = false; btn.textContent = "Создать"; }
+}
+document.getElementById("proj-create-go").addEventListener("click", submitProjCreate);
+projName.addEventListener("keydown", (e) => { if (e.key === "Enter") submitProjCreate(); });
+
+// project switched → retitle and re-pull every view from the new state dir
+window.mf.onProjectChanged(() => {
+  refreshProject();
+  for (const v of Object.values(window.Views)) {
+    if (v.onProject) v.onProject(); else if (v.refresh) v.refresh();
+  }
+  refreshLayers();
+});
+refreshProject();
+
 // ── autopilot toggle ─────────────────────────────────────────────────────────
 const ap = document.getElementById("autopilot");
 ap.checked = localStorage.getItem("mf-autopilot") === "1";

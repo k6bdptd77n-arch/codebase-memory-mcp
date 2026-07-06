@@ -42,8 +42,25 @@ button { font: inherit; }
 
 /* ── titlebar ───────────────────────────────────────────────────────────── */
 #titlebar { height: 40px; display: flex; align-items: center; justify-content: center;
-  background: var(--side); -webkit-app-region: drag; }
-#title-text { font-size: 13px; color: var(--muted); }
+  gap: 8px; background: var(--side); -webkit-app-region: drag; position: relative; }
+#title-text { font-size: 13px; color: var(--dim); }
+.proj-btn { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 6px;
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  color: var(--muted); font-size: 13px; padding: 3px 10px; cursor: pointer; }
+.proj-btn:hover { background: var(--hover); color: var(--text); border-color: var(--line); }
+.proj-btn .proj-name { font-weight: 600; color: var(--text); }
+.proj-btn .proj-caret { font-size: 9px; color: var(--dim); }
+.proj-menu { -webkit-app-region: no-drag; position: absolute; top: 36px; left: 50%;
+  transform: translateX(-50%); min-width: 260px; z-index: 40;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 14px 40px rgba(0,0,0,.5); padding: 5px; display: flex;
+  flex-direction: column; gap: 1px; }
+.proj-item { text-align: left; background: none; border: none; border-radius: 6px;
+  color: var(--text); font-size: 12.5px; padding: 7px 11px; cursor: pointer;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.proj-item:hover { background: var(--hover); }
+.proj-item.on { color: var(--bright); background: var(--pill); }
+.proj-sep { height: 1px; background: var(--line); margin: 4px 6px; }
 
 /* ── shell ──────────────────────────────────────────────────────────────── */
 #shell { display: flex; height: calc(100% - 40px - 26px); }
@@ -360,6 +377,39 @@ body.theme-deck .lane:hover { background: var(--hover); }
   height: 60%; gap: 7px; }
 .empty-title { font-size: 15px; font-weight: 500; color: var(--muted); }
 .empty-hint { color: var(--dim); font-size: 13px; max-width: 46ch; text-align: center; }
+.empty-actions { display: flex; gap: 10px; margin-top: 10px; }
+
+/* ── plan wizard (ручной план на пустой доске) ─────────────────────────── */
+.plan-wizard { max-width: 720px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 15px 17px; }
+.wiz-label { display: block; font-size: 11.5px; font-weight: 600; color: var(--muted);
+  margin: 12px 0 5px; }
+.plan-wizard input, .plan-wizard textarea { width: 100%; background: var(--input);
+  color: var(--text); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 7px 10px; font: 12.5px/1.5 var(--font); resize: vertical; }
+.plan-wizard input:focus, .plan-wizard textarea:focus { outline: none; border-color: var(--dim); }
+.wiz-story { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
+  margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; background: var(--bg); }
+.wiz-row1 { display: flex; gap: 8px; }
+.wiz-row1 .wz-title { flex: 1; font-family: var(--mono); font-size: 12px; }
+.wz-verify { font-family: var(--mono); font-size: 12px; }
+.wiz-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+
+/* ── modal (новый проект) ──────────────────────────────────────────────── */
+.modal { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center; }
+.modal-card { width: 420px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 17px 19px; box-shadow: 0 20px 60px rgba(0,0,0,.55); }
+.modal-title { font-size: 14.5px; font-weight: 600; color: var(--bright); margin-bottom: 5px; }
+.modal-sub { color: var(--muted); font-size: 12.5px; margin-bottom: 12px; }
+.modal-sub code { color: var(--text); font: 11.5px var(--mono); background: var(--pill);
+  border-radius: 4px; padding: 1px 5px; }
+.modal-card input { width: 100%; background: var(--input); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--r); padding: 8px 11px;
+  font: 13px var(--font); }
+.modal-card input:focus { outline: none; border-color: var(--dim); }
+.modal-err { color: var(--danger); font-size: 12px; margin-top: 8px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 14px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }

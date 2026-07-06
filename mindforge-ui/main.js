@@ -6,12 +6,19 @@ const os = require("os");
 const { execFile, spawn } = require("child_process");
 const pty = require("node-pty");
 
-const REPO = path.resolve(__dirname, "..");                 // the fablize-memory-mcp repo
+// INSTALL is this repo — the fablize engines, the C memory engine and the
+// installer live HERE regardless of which project is open. The current project
+// is mutable state: every project-scoped lookup goes through repo()/fablize().
+const INSTALL = path.resolve(__dirname, "..");
 const PY = "python3";
-const SCRIPTS = path.join(REPO, "fablize", "scripts");
-const FABLIZE = path.join(REPO, ".fablize");
-const BIN = path.join(REPO, "build", "c", "codebase-memory-mcp");
+const SCRIPTS = path.join(INSTALL, "fablize", "scripts");
+const BIN = path.join(INSTALL, "build", "c", "codebase-memory-mcp");
 const SHOT = process.argv.includes("--shot");
+const { okProjectName, createProjectAt } = require("./projectcore");
+
+let projectDir = INSTALL;                                   // current project (see app.whenReady)
+const repo = () => projectDir;
+const fablize = () => path.join(projectDir, ".fablize");
 
 let win = null;
 let term = null;
@@ -20,7 +27,7 @@ const running = new Map();                                  // story id → { ch
 // --- helpers -----------------------------------------------------------------
 function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
-    execFile(cmd, args, { cwd: REPO, timeout: opts.timeout || 15000, maxBuffer: 8 << 20, ...opts },
+    execFile(cmd, args, { cwd: repo(), timeout: opts.timeout || 15000, maxBuffer: 8 << 20, ...opts },
       (err, stdout, stderr) => resolve({ ok: !err, out: stdout || "", err: stderr || (err && err.message) || "" }));
   });
 }
@@ -61,7 +68,7 @@ function parseFact(p) {
 
 function brainFacts() {
   const out = [];
-  for (const [dir, scope] of [[path.join(FABLIZE, "brain"), "project"],
+  for (const [dir, scope] of [[path.join(fablize(), "brain"), "project"],
                               [path.join(os.homedir(), ".fablize", "brain"), "global"]]) {
     try {
       for (const f of fs.readdirSync(dir)) if (f.endsWith(".md")) {
@@ -83,9 +90,9 @@ function episodes() {
       }
     } catch {}
   };
-  pull(path.join(FABLIZE, "traces.jsonl"));
-  const slug = REPO.replace(/[^A-Za-z0-9]/g, "-");
-  const epDirs = [path.join(REPO, "memory", "episodes"),
+  pull(path.join(fablize(), "traces.jsonl"));
+  const slug = repo().replace(/[^A-Za-z0-9]/g, "-");
+  const epDirs = [path.join(repo(), "memory", "episodes"),
                   path.join(os.homedir(), ".claude", "projects", slug, "memory", "episodes")];
   for (const d of epDirs) {
     try { for (const f of fs.readdirSync(d)) if (f.endsWith(".jsonl")) pull(path.join(d, f)); } catch {}
@@ -103,11 +110,11 @@ function snapshot() {
 }
 
 async function computeSnapshot() {
-  let goals = readJSON(path.join(FABLIZE, "goals.json"));
+  let goals = readJSON(path.join(fablize(), "goals.json"));
   if (goals && (typeof goals !== "object" || Array.isArray(goals))) goals = null;
   if (goals && !Array.isArray(goals.goals)) goals = { ...goals, goals: [] };
-  const spec = readJSON(path.join(FABLIZE, "spec.json"));
-  const ledger = readTail(path.join(FABLIZE, "ledger.jsonl"), 40)
+  const spec = readJSON(path.join(fablize(), "spec.json"));
+  const ledger = readTail(path.join(fablize(), "ledger.jsonl"), 40)
     .split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } })
     .filter(Boolean).reverse();
   // runtime enrichment: which stories have a live agent or a review-ready branch.
@@ -128,25 +135,27 @@ async function computeSnapshot() {
         } else st.commits = 0;
         let started = (running.get(g.id) || {}).started;
         if (!started) {
-          try { started = fs.statSync(path.join(FABLIZE, "orchestrator", `${g.id}.log`)).mtimeMs; } catch {}
+          try { started = fs.statSync(path.join(fablize(), "orchestrator", `${g.id}.log`)).mtimeMs; } catch {}
         }
         if (started) st.elapsedMin = Math.max(0, Math.round((Date.now() - started) / 60000));
       }
       states[g.id] = st;
     }
   }
-  return { goals, spec, ledger, states, repo: REPO };
+  return { goals, spec, ledger, states, repo: repo() };
 }
 
 async function layers() {
   const facts = brainFacts().length;
-  const goals = readJSON(path.join(FABLIZE, "goals.json"));
+  const goals = readJSON(path.join(fablize(), "goals.json"));
   let graph = null;
   const projects = await run(BIN, ["cli", "list_projects", "{}"], { timeout: 4000 });
   try {
     let obj = JSON.parse(projects.out);
     if (obj.result && obj.result.content) obj = JSON.parse(obj.result.content[0].text);
-    const me = (obj.projects || []).find((p) => p.root_path === REPO) || (obj.projects || [])[0];
+    // only exact matches for a switched project — the [0] fallback is for INSTALL only
+    const me = (obj.projects || []).find((p) => p.root_path === repo())
+      || (repo() === INSTALL ? (obj.projects || [])[0] : null);
     if (me) graph = { nodes: me.nodes, edges: me.edges, name: me.name };
   } catch {}
   const glist = Array.isArray(goals?.goals) ? goals.goals : null;
@@ -162,7 +171,7 @@ async function layers() {
 // The crew config is the GUI's own state file: ~/.fablize/crew.json (global default)
 // overridden by <repo>/.fablize/crew.json. A missing toggle means "enabled".
 const CREW_GLOBAL = path.join(os.homedir(), ".fablize", "crew.json");
-const CREW_LOCAL = path.join(FABLIZE, "crew.json");
+const crewLocal = () => path.join(fablize(), "crew.json");   // per-project override
 const CREW_ROLES = ["brain", "planner", "hand"];
 
 const PROVIDER_DEFAULTS = {
@@ -173,7 +182,7 @@ const PROVIDER_DEFAULTS = {
 
 function crewLoad() {
   const cfg = { roles: {}, providers: {} };
-  for (const src of [readJSON(CREW_GLOBAL), readJSON(CREW_LOCAL)]) {
+  for (const src of [readJSON(CREW_GLOBAL), readJSON(crewLocal())]) {
     if (!src) continue;
     if (src.roles) for (const r of CREW_ROLES)
       if (src.roles[r]) cfg.roles[r] = { ...cfg.roles[r], ...src.roles[r] };
@@ -232,8 +241,8 @@ async function ollamaModels() {
 
 function crewSave(cfg) {
   try {
-    fs.mkdirSync(FABLIZE, { recursive: true });
-    fs.writeFileSync(CREW_LOCAL, JSON.stringify(cfg, null, 1) + "\n");
+    fs.mkdirSync(fablize(), { recursive: true });
+    fs.writeFileSync(crewLocal(), JSON.stringify(cfg, null, 1) + "\n");
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message }; }
 }
@@ -244,8 +253,8 @@ function mcpDefs() {
   const defs = {};
   const uj = readJSON(path.join(os.homedir(), ".claude.json")) || {};
   Object.assign(defs, uj.mcpServers || {});
-  Object.assign(defs, (((uj.projects || {})[REPO]) || {}).mcpServers || {});
-  Object.assign(defs, (readJSON(path.join(REPO, ".mcp.json")) || {}).mcpServers || {});
+  Object.assign(defs, (((uj.projects || {})[repo()]) || {}).mcpServers || {});
+  Object.assign(defs, (readJSON(path.join(repo(), ".mcp.json")) || {}).mcpServers || {});
   return defs;
 }
 
@@ -283,7 +292,7 @@ function skillsInventory() {
     } catch {}
   };
   add(path.join(os.homedir(), ".claude", "skills"), "user");
-  add(path.join(REPO, ".claude", "skills"), "project");
+  add(path.join(repo(), ".claude", "skills"), "project");
   // plugins: ~/.claude/plugins/cache/<marketplace>/<plugin>/<ver>/skills/<name>/SKILL.md
   const cache = path.join(os.homedir(), ".claude", "plugins", "cache");
   try {
@@ -333,7 +342,7 @@ async function buildRoleArgs(role) {
 function streamClaude(tag, prompt, extraArgs = [], cleanup = null) {
   return new Promise((resolve) => {
     const args = ["-p", prompt, "--output-format", "stream-json", "--verbose", ...extraArgs];
-    const child = spawn("claude", args, { cwd: REPO, env: process.env });
+    const child = spawn("claude", args, { cwd: repo(), env: process.env });
     let result = "", buf = "";
     child.stdout.on("data", (d) => {
       buf += d.toString();
@@ -394,7 +403,7 @@ async function reviewEvidence(id) {
   let truncated = false;
   const lines = patch.split("\n");
   if (lines.length > PATCH_MAX_LINES) { patch = lines.slice(0, PATCH_MAX_LINES).join("\n"); truncated = true; }
-  const agentLog = readTail(path.join(FABLIZE, "orchestrator", `${id}.log`), 40);
+  const agentLog = readTail(path.join(fablize(), "orchestrator", `${id}.log`), 40);
   return { ok: true, patch, truncated,
     text: `=== diff --stat:\n${stat.out}\n=== commits:\n${log.out}\n=== agent log tail:\n${agentLog}` };
 }
@@ -417,20 +426,91 @@ async function storyApprove(_e, { id, evidence }) {
   const steps = [];
   const step = (name, r) => { steps.push({ name, ok: r.ok, out: (r.out + "\n" + (r.err || "")).trim().slice(-1200) }); return r.ok; };
   if (!okId(id)) return { ok: false, steps: [{ name: "validate id", ok: false, out: "некорректный id стори" }] };
-  const goals = readJSON(path.join(FABLIZE, "goals.json"));
+  const goals = readJSON(path.join(fablize(), "goals.json"));
   const glist = Array.isArray(goals?.goals) ? goals.goals : [];
   const isFinal = glist.length > 0 && glist[glist.length - 1].id === id;
-  const tests = await run(PY, ["-m", "pytest", "fablize/tests/", "-q"], { timeout: 300000 });
-  if (!step("verification gate: pytest", tests)) return { ok: false, steps };
-  const tail = tests.out.trim().split("\n").pop();
+  // the pytest gate exists only where a fablize test suite exists (this repo);
+  // an arbitrary project approves on review evidence — stated in the step log.
+  const hasSuite = fs.existsSync(path.join(repo(), "fablize", "tests"));
+  let tail = "";
+  if (hasSuite) {
+    const tests = await run(PY, ["-m", "pytest", "fablize/tests/", "-q"], { timeout: 300000 });
+    if (!step("verification gate: pytest", tests)) return { ok: false, steps };
+    tail = tests.out.trim().split("\n").pop();
+  } else {
+    step("verification gate", { ok: true, out: "fablize/tests не найден в проекте — авто-gate пропущен, приёмка по ревью", err: "" });
+  }
   await engine("goals.py", ["next"]);
   const ck = ["checkpoint", "--id", id, "--status", "complete", "--evidence", evidence || "approved in MindForge Control"];
-  if (isFinal) ck.push("--verify-cmd", "python3 -m pytest fablize/tests/ -q", "--verify-evidence", tail);
+  if (isFinal) ck.push(
+    "--verify-cmd", hasSuite ? "python3 -m pytest fablize/tests/ -q" : "manual review in MindForge Control",
+    "--verify-evidence", hasSuite ? tail : "diff+log reviewed and approved in the GUI");
   if (!step("checkpoint", await engine("goals.py", ck))) return { ok: false, steps };
   if (!step("merge", await run("git", ["merge", "--no-edit", `fablize/${id}`]))) return { ok: false, steps };
-  step("worktree remove", await run("git", ["worktree", "remove", "--force", path.join(FABLIZE, "worktrees", id)]));
+  step("worktree remove", await run("git", ["worktree", "remove", "--force", path.join(fablize(), "worktrees", id)]));
   step("branch delete", await run("git", ["branch", "-d", `fablize/${id}`]));
   return { ok: true, steps, testsTail: tail };
+}
+
+// --- project switching -----------------------------------------------------------
+// Recents + last-opened are a UI preference (userData/mindforge.json), NOT project
+// state — the "GUI never writes .fablize" rule stays intact.
+const prefsPath = () => path.join(app.getPath("userData"), "mindforge.json");
+const loadPrefs = () => {
+  const p = readJSON(prefsPath());
+  return p && typeof p === "object" && !Array.isArray(p) ? p : {};
+};
+function savePrefs(p) {
+  try {
+    fs.mkdirSync(path.dirname(prefsPath()), { recursive: true });
+    fs.writeFileSync(prefsPath(), JSON.stringify(p, null, 1) + "\n");
+  } catch {}
+}
+const recentsList = () => {
+  const r = loadPrefs().recents;
+  return (Array.isArray(r) ? r : []).filter((d) => typeof d === "string" && fs.existsSync(d)).slice(0, 8);
+};
+function projectInfo() {
+  return { dir: projectDir, name: path.basename(projectDir) || projectDir,
+    isInstall: projectDir === INSTALL, hasFablize: fs.existsSync(fablize()),
+    recents: recentsList().map((d) => ({ name: path.basename(d) || d, dir: d })) };
+}
+
+// live updates: any .fablize change → debounced push. If the project has no
+// .fablize yet, watch the project dir itself and re-arm once .fablize appears.
+let watcher = null, watchT = null;
+function armWatch() {
+  if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+  const notify = () => { clearTimeout(watchT); watchT = setTimeout(() => send("fablize-changed", {}), 250); };
+  try {
+    if (fs.existsSync(fablize())) watcher = fs.watch(fablize(), { recursive: true }, notify);
+    else watcher = fs.watch(repo(), {}, () => { if (fs.existsSync(fablize())) armWatch(); notify(); });
+  } catch {}
+}
+
+function startTerm() {
+  if (term) { try { term.kill(); } catch {} term = null; }
+  const userShell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
+  try {
+    term = pty.spawn(userShell, [], { name: "xterm-color", cols: 100, rows: 28, cwd: repo(), env: process.env });
+    term.onData((d) => send("pty-data", d));
+    term.onExit(() => send("pty-exit"));
+  } catch {}
+}
+
+function switchProject(dir, persist = true) {
+  projectDir = path.resolve(String(dir));
+  snapMemo = { t: 0, p: null };                              // stale memo belongs to the old project
+  mcpCache = { t: 0, list: null };                           // .mcp.json is per-project
+  armWatch();
+  startTerm();                                               // terminal follows the project
+  if (persist) {
+    const p = loadPrefs();
+    p.recents = [projectDir, ...recentsList().filter((d) => d !== projectDir)].slice(0, 8);
+    p.last = projectDir;
+    savePrefs(p);
+  }
+  send("project-changed", projectInfo());
 }
 
 function createWindow() {
@@ -445,13 +525,10 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());
 
-  // integrated terminal (real PTY)
-  const userShell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
-  term = pty.spawn(userShell, [], { name: "xterm-color", cols: 100, rows: 28, cwd: REPO, env: process.env });
-  term.onData((d) => send("pty-data", d));
-  term.onExit(() => send("pty-exit"));
+  // integrated terminal (real PTY) — respawned in the new cwd on project switch
+  startTerm();
   ipcMain.on("pty-input", (_e, d) => term && term.write(d));
-  ipcMain.on("pty-resize", (_e, { cols, rows }) => { try { term.resize(cols, rows); } catch {} });
+  ipcMain.on("pty-resize", (_e, { cols, rows }) => { try { term && term.resize(cols, rows); } catch {} });
 
   // state
   ipcMain.handle("snapshot", snapshot);
@@ -459,11 +536,11 @@ function createWindow() {
   ipcMain.handle("brain-facts", () => brainFacts());
   ipcMain.handle("episodes", () => episodes());
   ipcMain.handle("metrics", async () => {
-    const r = await engine("metrics.py", ["--json", "--project", REPO]);
+    const r = await engine("metrics.py", ["--json", "--project", repo()]);
     try { return JSON.parse(r.out); } catch { return null; }
   });
   ipcMain.handle("log-tail", (_e, id) =>
-    okId(id) ? readTail(path.join(FABLIZE, "orchestrator", `${id}.log`), 120) : "");
+    okId(id) ? readTail(path.join(fablize(), "orchestrator", `${id}.log`), 120) : "");
   ipcMain.handle("review-evidence", (_e, id) => reviewEvidence(id));   // validates id itself
 
   // brain actions
@@ -481,7 +558,7 @@ function createWindow() {
     if (hand.cli && hand.cli !== "claude") handArgs.push("--agent-style", hand.cli);
     const child = spawn(PY, [path.join(SCRIPTS, "orchestrate.py"), "run", "--ids", id,
       "--parallel", "1", ...handArgs],
-      { cwd: REPO, env: process.env });
+      { cwd: repo(), env: process.env });
     running.set(id, { child, started: Date.now() });
     send("story-state", { id, state: "running" });
     child.on("close", (code) => {
@@ -532,6 +609,36 @@ function createWindow() {
   // 3D-graph viewer — URL is hardcoded here; never openExternal a renderer-supplied URL
   ipcMain.handle("open-graph", () => { shell.openExternal("http://localhost:9749"); return true; });
 
+  // projects: the renderer NEVER supplies a path — it can only trigger a native
+  // dialog, pick an index from the persisted recents, or submit a validated name.
+  ipcMain.handle("project-info", () => projectInfo());
+  ipcMain.handle("project-open", async () => {
+    const r = await dialog.showOpenDialog(win, { title: "Открыть проект",
+      properties: ["openDirectory", "createDirectory"] });
+    if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+    switchProject(r.filePaths[0]);
+    return { ok: true, info: projectInfo() };
+  });
+  ipcMain.handle("project-recent", (_e, i) => {
+    const list = recentsList();
+    const idx = Number(i);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= list.length)
+      return { ok: false, error: "нет такого проекта в списке" };
+    switchProject(list[idx]);
+    return { ok: true, info: projectInfo() };
+  });
+  ipcMain.handle("project-create", async (_e, rawName) => {
+    const name = String(rawName || "").trim();
+    if (!okProjectName(name))
+      return { ok: false, error: "недопустимое имя: буквы, цифры, точка, дефис, пробел; без / и \\" };
+    const r = await dialog.showOpenDialog(win, { title: `Где создать проект «${name}»`,
+      buttonLabel: "Создать здесь", properties: ["openDirectory", "createDirectory"] });
+    if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+    const res = await createProjectAt(INSTALL, r.filePaths[0], name);
+    if (res.ok) switchProject(res.target);
+    return res;
+  });
+
   // confirmations for destructive actions live in main (native dialog — can't be spoofed by CSS)
   ipcMain.handle("confirm", async (_e, { title, detail }) => {
     const r = await dialog.showMessageBox(win, { type: "warning", buttons: ["Cancel", title],
@@ -539,13 +646,8 @@ function createWindow() {
     return r.response === 1;
   });
 
-  // live updates: any .fablize change → debounced push
-  let t = null;
-  try {
-    fs.watch(FABLIZE, { recursive: true }, () => {
-      clearTimeout(t); t = setTimeout(() => send("fablize-changed", {}), 250);
-    });
-  } catch {}
+  // live updates: any .fablize change → debounced push (re-armed on project switch)
+  armWatch();
 
   if (SHOT) {
     win.webContents.once("did-finish-load", async () => {
@@ -571,5 +673,15 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // MINDFORGE_PROJECT presets the project (testing/headless); otherwise restore
+  // the last explicitly opened one. Env presets are NOT persisted as "last".
+  const envP = process.env.MINDFORGE_PROJECT;
+  if (envP && fs.existsSync(envP)) projectDir = path.resolve(envP);
+  else {
+    const last = loadPrefs().last;
+    if (typeof last === "string" && fs.existsSync(last)) projectDir = path.resolve(last);
+  }
+  createWindow();
+});
 app.on("window-all-closed", () => app.quit());

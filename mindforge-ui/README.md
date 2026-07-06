@@ -32,6 +32,20 @@ npm start
 npm run shot           # headless screenshots of every tab → /tmp/mindforge_*.png
 ```
 
+## Projects
+
+The titlebar shows the current project with a dropdown: recent projects, "Открыть
+папку…" (any folder becomes a project — its `.fablize/` is read live) and "Новый
+проект…" (mkdir → `git init` → `bash fablize/install.sh <target>` applies the
+disciplines, then the GUI switches to it). Recents/last-opened live in
+`userData/mindforge.json` — a UI preference, never project state. The fablize
+engines always run from THIS repo (`fablize/scripts/*.py`) with the current
+project as cwd, so `./.fablize` resolves per project.
+
+`MINDFORGE_PROJECT=/path/to/project npm start` (or `npm run shot`) presets the
+project for a session — useful for testing and headless captures; it is not
+persisted as the last-opened project.
+
 Requires: `claude` CLI on PATH (subscription — no API key), `python3`, git. Fonts
 (Space Grotesk, IBM Plex Mono — both OFL) are vendored in `fonts/` for offline use.
 

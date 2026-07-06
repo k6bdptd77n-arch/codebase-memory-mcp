@@ -33,13 +33,16 @@ window.Views.board = (() => {
     const box = lanes();
     const empty = document.getElementById("board-empty");
     const brief = document.getElementById("board-brief");
+    const wizard = document.getElementById("plan-wizard");
     if (!snap || !snap.goals) {
       box.innerHTML = ""; brief.textContent = "";
-      empty.classList.remove("hidden");
+      // пока открыт мастер плана, пустышку не показываем
+      empty.classList.toggle("hidden", !wizard.classList.contains("hidden"));
       guide();
       return;
     }
     empty.classList.add("hidden");
+    wizard.classList.add("hidden");
     const done = snap.goals.goals.filter((g) => g.status === "complete").length;
     brief.innerHTML = `${esc(snap.goals.brief)}<small>план полёта · слито ${done}/${snap.goals.goals.length}</small>`;
     guide();
@@ -233,6 +236,66 @@ window.Views.board = (() => {
       "Открыть «План»", () => document.querySelector('.tab[data-tab="plan"]').click());
   }
 
+  // ── ручной план: brief + N стори (title / objective / команда проверки) ──
+  // Отправка идёт через тот же движок, что и планировщик: goals.py create
+  // --brief … --goal "title::objective" (команда проверки дописывается в конец
+  // objective — так того требует контракт стори; отдельного флага у create нет).
+  function wizardRow() {
+    const row = document.createElement("div");
+    row.className = "wiz-story";
+    row.innerHTML = `
+      <div class="wiz-row1">
+        <input class="wz-title" placeholder="название (kebab-case)" spellcheck="false" />
+        <button class="wz-del btn ghost small" title="убрать стори">✕</button>
+      </div>
+      <textarea class="wz-obj" rows="2" placeholder="задача: какие файлы можно трогать и что должно получиться" spellcheck="false"></textarea>
+      <input class="wz-verify" placeholder="команда проверки (например: npm test)" spellcheck="false" />`;
+    row.querySelector(".wz-del").addEventListener("click", () => {
+      if (document.querySelectorAll("#wiz-stories .wiz-story").length > 1) row.remove();
+    });
+    document.getElementById("wiz-stories").appendChild(row);
+    return row;
+  }
+  function wizardOpen() {
+    const box = document.getElementById("wiz-stories");
+    box.innerHTML = "";
+    document.getElementById("wiz-brief").value = "";
+    document.getElementById("wiz-err").textContent = "";
+    wizardRow();
+    document.getElementById("plan-wizard").classList.remove("hidden");
+    document.getElementById("board-empty").classList.add("hidden");
+    document.getElementById("wiz-brief").focus();
+  }
+  function wizardClose() {
+    document.getElementById("plan-wizard").classList.add("hidden");
+    render();
+  }
+  async function wizardSubmit() {
+    const err = document.getElementById("wiz-err");
+    err.textContent = "";
+    const brief = document.getElementById("wiz-brief").value.trim();
+    if (!brief) { err.textContent = "нужен brief"; return; }
+    const stories = [];
+    for (const row of document.querySelectorAll("#wiz-stories .wiz-story")) {
+      const title = row.querySelector(".wz-title").value.trim();
+      const obj = row.querySelector(".wz-obj").value.trim();
+      const verify = row.querySelector(".wz-verify").value.trim();
+      if (!title && !obj) continue;                        // пустую строку молча пропускаем
+      if (!title || !obj) { err.textContent = "у каждой стори нужны и название, и задача"; return; }
+      if (title.includes("::")) { err.textContent = "«::» в названии недопустимо"; return; }
+      stories.push(`${title}::${obj}${verify ? ` Verify: ${verify}` : ""}`);
+    }
+    if (!stories.length) { err.textContent = "нужна хотя бы одна стори"; return; }
+    const go = document.getElementById("wiz-create");
+    go.disabled = true;
+    try {
+      const r = await window.mf.planAccept(brief, stories, "create");
+      if (r.ok) { wizardClose(); refresh(); }
+      else err.textContent = (r.err || r.out || "goals.py create не сработал").trim().slice(0, 200);
+    } catch { err.textContent = "не удалось создать план"; }
+    finally { go.disabled = false; }
+  }
+
   const note = (t) => { document.getElementById("tm-note").textContent = t; };
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -262,10 +325,23 @@ window.Views.board = (() => {
     document.getElementById("drawer-close").addEventListener("click", closeReview);
     document.getElementById("drawer-approve").addEventListener("click", approve);
     document.getElementById("drawer-fail").addEventListener("click", fail);
+    document.getElementById("board-wizard-open").addEventListener("click", wizardOpen);
+    document.getElementById("board-open-plan").addEventListener("click",
+      () => document.querySelector('.tab[data-tab="plan"]').click());
+    document.getElementById("wiz-add").addEventListener("click", wizardRow);
+    document.getElementById("wiz-create").addEventListener("click", wizardSubmit);
+    document.getElementById("wiz-cancel").addEventListener("click", wizardClose);
     window.mf.onStoryState((m) => { if (m.state === "exited") onExit(m.id); else refresh(); });
     pollTimer = setInterval(pump, 1500);
     refresh();
   }
 
-  return { init, refresh, openReview };
+  // project switched: forget the old project's snapshot before re-reading
+  function onProject() {
+    snap = null; emptyStreak = 0; openLaneLogs.clear(); closeReview();
+    document.getElementById("plan-wizard").classList.add("hidden");
+    refresh();
+  }
+
+  return { init, refresh, openReview, onProject };
 })();

@@ -11,7 +11,13 @@
 </head>
 <body>
   <!-- ── titlebar (тонкий, как в VS Code / Cursor) ────────────────────────── -->
-  <div id="titlebar"><span id="title-text">MindForge — fablize-memory-mcp</span></div>
+  <div id="titlebar">
+    <span id="title-text">MindForge</span>
+    <button id="proj-btn" class="proj-btn" title="Текущий проект — нажмите, чтобы переключить">
+      <span class="proj-name">…</span><span class="proj-caret">▾</span>
+    </button>
+    <div id="proj-menu" class="proj-menu hidden"></div>
+  </div>
 
   <div id="shell">
     <!-- ── sidebar: навигация как в Cursor ──────────────────────────────── -->
@@ -42,7 +48,26 @@
         <div id="lanes"></div>
         <div id="board-empty" class="empty hidden">
           <div class="empty-title">Плана нет</div>
-          <div class="empty-hint">Откройте «План», опишите фичу — планировщик разложит её на стори.</div>
+          <div class="empty-hint">Составьте план вручную — или опишите фичу в «План», и планировщик разложит её сам.</div>
+          <div class="empty-actions">
+            <button id="board-wizard-open" class="btn primary small">Создать план</button>
+            <button id="board-open-plan" class="btn ghost small">Открыть «План»</button>
+          </div>
+        </div>
+
+        <!-- ручной план: brief + стори (название, задача, команда проверки) -->
+        <div id="plan-wizard" class="plan-wizard hidden">
+          <div class="pane-title">Новый план</div>
+          <label class="wiz-label">Что строим (brief)</label>
+          <input id="wiz-brief" placeholder="кратко: что должно получиться" spellcheck="false" />
+          <label class="wiz-label">Стори — у каждой своя задача и команда проверки</label>
+          <div id="wiz-stories"></div>
+          <button id="wiz-add" class="btn ghost small">+ стори</button>
+          <div class="wiz-actions">
+            <button id="wiz-create" class="btn primary small">Создать план</button>
+            <button id="wiz-cancel" class="btn ghost small">Отмена</button>
+            <span id="wiz-err" class="status-line"></span>
+          </div>
         </div>
       </section>
 
@@ -178,6 +203,20 @@
     <span class="sb-item" id="tm-agents">агентов: 0</span>
     <span class="sb-item" id="tm-clock"></span>
   </footer>
+
+  <!-- new-project modal: имя здесь, папка — в нативном диалоге main-процесса -->
+  <div id="proj-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-title">Новый проект</div>
+      <div class="modal-sub">Имя папки проекта. Дальше выберете, где её создать — MindForge сделает <code>git init</code> и применит дисциплины fablize.</div>
+      <input id="proj-name" placeholder="например: my-app" spellcheck="false" maxlength="80" />
+      <div id="proj-err" class="modal-err hidden"></div>
+      <div class="modal-actions">
+        <button id="proj-create-go" class="btn primary small">Создать</button>
+        <button id="proj-create-cancel" class="btn ghost small">Отмена</button>
+      </div>
+    </div>
+  </div>
 
   <!-- review drawer -->
   <aside id="drawer" class="drawer hidden">

@@ -284,5 +284,15 @@ window.Views.settings = (() => {
     }
     refresh();
   }
-  return { init, refresh };
+
+  // project switched: crew.json is per-project — drop unsaved edits and reload
+  function onProject() {
+    dirty = false;
+    inv = null;
+    $("crew-save").disabled = true;
+    $("crew-status").textContent = "";
+    refresh();
+  }
+
+  return { init, refresh, onProject };
 })();

@@ -47,6 +47,13 @@ contextBridge.exposeInMainWorld("mf", {
   // 3D graph viewer (URL is hardcoded in main)
   openGraph: () => ipcRenderer.invoke("open-graph"),
 
+  // projects — the renderer never passes paths, only triggers dialogs / indices / a name
+  projectInfo: () => ipcRenderer.invoke("project-info"),
+  projectOpen: () => ipcRenderer.invoke("project-open"),
+  projectRecent: (i) => ipcRenderer.invoke("project-recent", i),
+  projectCreate: (name) => ipcRenderer.invoke("project-create", name),
+  onProjectChanged: (cb) => ipcRenderer.on("project-changed", (_e, info) => cb(info)),
+
   // native confirmation for destructive actions
   confirm: (title, detail) => ipcRenderer.invoke("confirm", { title, detail }),
 });
