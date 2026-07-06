@@ -110,6 +110,22 @@ Rules: `complete` requires non-empty evidence; the final goal cannot complete wi
 verify command + its result. A story that is `blocked` twice trips the escalation gate
 (see below) — bounded self-correction, never an infinite retry loop.
 
+### Parallel builds
+
+When the plan's stories have disjoint file scopes, `scripts/orchestrate.py` fans them out to
+headless agents, each in its own git worktree on branch `fablize/<id>` — the main checkout is
+never touched:
+
+```bash
+python3 scripts/orchestrate.py plan                    # what would run (always safe)
+python3 scripts/orchestrate.py run [--ids G001,G003] [--parallel N] [--dry-run]
+python3 scripts/orchestrate.py clean                   # print worktree cleanup commands
+```
+
+Honest boundary: the orchestrator never checkpoints for you — review each story's branch and
+log, then checkpoint via `goals.py` and merge. `crew/` is the optional unattended driver on
+top (a planner/reviewer LLM loop over these same engines).
+
 ## [debugging / test failure / unknown cause / review] Investigation protocol
 
 Follow `packs/investigation-protocol.txt`: reproduce first → form 3+ competing hypotheses →

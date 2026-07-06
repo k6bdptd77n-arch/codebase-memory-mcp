@@ -13,13 +13,32 @@ task) are skipped to keep the log signal-dense.
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 MAX_GOAL = 280   # chars kept from the task statement
 MAX_RESULT = 280
+
+
+def atomic_write(path: Path, text: str) -> None:
+    """Crash-safe durable write: stage into a temp file in the same dir, then os.replace
+    (atomic rename) so a crash mid-write can never truncate/corrupt the episode log."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def parse_transcript(path: Path):
@@ -117,7 +136,7 @@ def main() -> int:
             kept.append(line)
     kept.append(json.dumps(record, ensure_ascii=False))
     try:
-        log.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        atomic_write(log, "\n".join(kept) + "\n")  # full rewrite — never leave a torn month file
     except Exception:
         return 0
     return 0

@@ -25,6 +25,8 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -168,6 +170,21 @@ def worktree_add_cmd(story):
             str(WORKTREES / story["id"]), "HEAD"]
 
 
+# Serialize `git worktree add` across the pool: concurrent adds race on the shared repo's
+# index.lock, turning a transient lock into a hard story failure. Only the add is locked —
+# the agents themselves still run fully in parallel.
+_WORKTREE_LOCK = threading.Lock()
+
+
+def worktree_add(add):
+    with _WORKTREE_LOCK:
+        r = subprocess.run(add, cwd=str(ROOT), capture_output=True, text=True)
+        if r.returncode != 0 and re.search(r"index\.lock|unable to lock|\.lock", r.stderr or ""):
+            time.sleep(0.5)  # one retry after a short backoff — lock contention is transient
+            r = subprocess.run(add, cwd=str(ROOT), capture_output=True, text=True)
+    return r
+
+
 def run_story(plan, story, a):
     wt = WORKTREES / story["id"]
     logf = LOGS / f"{story['id']}.log"
@@ -179,7 +196,7 @@ def run_story(plan, story, a):
               f"--permission-mode {a.permission_mode}  # log → {logf}")
         return story["id"], None
     LOGS.mkdir(parents=True, exist_ok=True)
-    wtadd = subprocess.run(add, cwd=str(ROOT), capture_output=True, text=True)
+    wtadd = worktree_add(add)
     if wtadd.returncode != 0 and not wt.exists():
         print(f"✗ {story['id']}: worktree add failed — {wtadd.stderr.strip()[:200]}")
         log("orchestrator_story", id=story["id"], rc=wtadd.returncode, stage="worktree")

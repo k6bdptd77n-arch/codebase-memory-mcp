@@ -21,6 +21,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -85,9 +86,25 @@ def load():
         sys.exit(f"fablize: {GOALS} is corrupt or unreadable — fix or delete it, then re-create the plan.")
 
 
+def atomic_write(path, text):
+    """Crash-safe durable write: stage into a temp file in the same dir, then os.replace
+    (atomic rename) so a crash mid-write can never truncate/corrupt the real state file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def save(plan):
-    DIR.mkdir(parents=True, exist_ok=True)
-    GOALS.write_text(json.dumps(plan, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic_write(GOALS, json.dumps(plan, ensure_ascii=False, indent=1))
 
 
 def cmd_create(a):

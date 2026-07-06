@@ -11,6 +11,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 HERMES = REPO / "imba" / "hermes-economizer" / "router.py"
 HOOK = REPO / "imba" / "autoclaude" / ".claude" / "hooks" / "model_router.py"
+UPGRADE = REPO / "imba" / "autoclaude" / ".claude" / "hooks" / "prompt_upgrade.py"
 
 
 def load(path, name):
@@ -22,6 +23,7 @@ def load(path, name):
 
 hermes = load(HERMES, "hermes_router")
 hook = load(HOOK, "hook_router")
+upgrade = load(UPGRADE, "hook_upgrade")
 
 # the prompt that was misrouted as "simple" in a live session (2026-07-02)
 REGRESSION_PROMPT = (
@@ -82,6 +84,15 @@ class SyncTests(unittest.TestCase):
     def test_regexes_identical(self):
         for attr in ("_COMPLEX_RE", "_COMPLEX_RU_RE", "_RESEARCH_RE", "_URL_RE", "_MULTIPART_RE"):
             self.assertEqual(getattr(hermes, attr).pattern, getattr(hook, attr).pattern, attr)
+
+    def test_trivial_sets_identical_across_hooks(self):
+        # model_router.py and prompt_upgrade.py each carry a TRIVIAL_EXACT copy — a drift
+        # means one hook skips a prompt the other processes.
+        self.assertEqual(hook.TRIVIAL_EXACT, upgrade.TRIVIAL_EXACT)
+
+    def test_is_trivial_agrees_across_hooks(self):
+        for p in BATTERY + ["ok", "спасибо!", "/compact", "!ls", "y", "fix the login race condition"]:
+            self.assertEqual(hook.is_trivial(p), upgrade.is_trivial(p), p)
 
 
 if __name__ == "__main__":

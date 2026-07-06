@@ -39,9 +39,27 @@ import math
 import os
 import re
 import sys
+import tempfile
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+def atomic_write(path, text):
+    """Crash-safe durable write: stage into a temp file in the same dir, then os.replace
+    (atomic rename) so a crash mid-write can never truncate/corrupt the real state file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def state_root(base="."):
@@ -332,7 +350,7 @@ def cmd_remember(a):
     if a.expires:
         fm.append(f"expires: {a.expires}")
     fm.append("---")
-    path.write_text("\n".join(fm) + "\n\n" + a.body.strip() + links + "\n", encoding="utf-8")
+    atomic_write(path, "\n".join(fm) + "\n\n" + a.body.strip() + links + "\n")
     log("fact_saved", name=name, type=a.type, scope=a.scope)
     print(f"fablize brain: {verb} [{a.type}/{a.scope}] {name} → {path}")
 
@@ -417,10 +435,10 @@ def cmd_reflect(a):
         store.mkdir(parents=True, exist_ok=True)
         name = slug("lesson-" + a.lesson)
         path = store / f"{name}.md"
-        path.write_text(
+        atomic_write(
+            path,
             f"---\nname: {name}\ndescription: {a.lesson[:120]}\ntype: lesson\nscope: project\nupdated: {now()}\n---\n\n"
-            f"{a.lesson}\n\n**Worked:** {a.worked or '—'}\n**Failed:** {a.failed or '—'}\n",
-            encoding="utf-8")
+            f"{a.lesson}\n\n**Worked:** {a.worked or '—'}\n**Failed:** {a.failed or '—'}\n")
         log("fact_saved", name=name, type="lesson", scope="project")
         print(f"fablize brain: lesson distilled → {path}")
     print("fablize brain: the store is now smarter than before this task — that is the growth invariant.")
@@ -438,7 +456,7 @@ def cmd_profile(a):
             sys.exit("fablize: profile set needs --key and --value.")
         prof[a.key] = a.value
         prof["updated"] = now()
-        path.write_text(json.dumps(prof, ensure_ascii=False, indent=1), encoding="utf-8")
+        atomic_write(path, json.dumps(prof, ensure_ascii=False, indent=1))
         log("profile_set", key=a.key)
         print(f"fablize brain: profile.{a.key} = {a.value}")
     else:

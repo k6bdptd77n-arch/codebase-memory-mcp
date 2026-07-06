@@ -9,7 +9,8 @@ in their project.
 What goes in the bundle:
   AGENTS.md          - the universal operating block (read by most agents)
   packs/             - the verified discipline packs (plain text)
-  scripts/           - brain.py, goals.py, spec.py, metrics.py, bundle.py (stdlib-only Python)
+  scripts/           - brain.py, goals.py, spec.py, metrics.py, orchestrate.py, bundle.py
+                       (stdlib-only Python — build() ships every scripts/*.py)
   hooks/             - brain_reflect.py (auto-reflect Stop hook), destructive_guard.py
   apply.sh           - drops AGENTS.md + packs/ + scripts/ + hooks/ into a target project
   QUICKSTART.md      - per-tool wiring instructions
@@ -94,6 +95,7 @@ engines yourself from a shell:
 python3 scripts/spec.py lock --req "..." --decision "q::a"   # lock a clarified spec
 python3 scripts/goals.py create --brief "..." --goal "a::x" --goal "verify::y"
 python3 scripts/goals.py next
+python3 scripts/orchestrate.py run                           # fan stories out to worktree agents
 python3 scripts/metrics.py                                   # observability summary
 ```
 

@@ -32,48 +32,57 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mindforge_tools as mt  # noqa: E402  (stdlib boundary — safe to import always)
 
-try:
-    from crewai import Agent, Crew, Task
-    from crewai.tools import tool
-except ImportError:
-    print("crewai is not installed. Set it up once:\n"
-          "  python3 -m venv crew/.venv && crew/.venv/bin/pip install -r crew/requirements.txt\n"
-          "then run this script with crew/.venv/bin/python3.")
-    sys.exit(1)
-
 MODEL = os.environ.get("MINDFORGE_CREW_MODEL", "anthropic/claude-haiku-4-5-20251001")
+DEFAULT_VERIFY = "python3 -m pytest fablize/tests/ -q"
+
+
+def _crewai():
+    """Import crewAI on demand. The import is LAZY so this module (cycle, verify_cmd, tests)
+    loads cleanly without crewai installed — only the LLM-touching paths need it."""
+    try:
+        from crewai import Agent, Crew, Task
+        from crewai.tools import tool
+        return Agent, Crew, Task, tool
+    except ImportError:
+        sys.exit("crewai is not installed. Set it up once:\n"
+                 "  python3 -m venv crew/.venv && crew/.venv/bin/pip install -r crew/requirements.txt\n"
+                 "then run this script with crew/.venv/bin/python3.")
 
 
 # --- tools exposed to the LLM agents (thin: they only see fablize engines) -----
 
-@tool("brain_recall")
-def t_brain_recall(query: str) -> str:
-    """Recall prior facts, lessons, episodes and failure warnings about a topic
-    from the project's persistent memory. Call before planning."""
-    return mt.brain_recall(query)
+def _planner_tools(tool):
+    """Build the crewAI tool wrappers (needs the @tool decorator, hence built lazily)."""
 
+    @tool("brain_recall")
+    def t_brain_recall(query: str) -> str:
+        """Recall prior facts, lessons, episodes and failure warnings about a topic
+        from the project's persistent memory. Call before planning."""
+        return mt.brain_recall(query)
 
-@tool("goals_create")
-def t_goals_create(brief: str, stories_json: str) -> str:
-    """Create the story plan. stories_json is a JSON array of 'title::objective'
-    strings. Each objective MUST name the exact files the story may touch, and the
-    file sets of different stories MUST be disjoint (that is what makes parallel
-    worktree agents merge cleanly)."""
-    try:
-        stories = json.loads(stories_json)
-        assert isinstance(stories, list) and all(isinstance(s, str) for s in stories)
-    except (ValueError, AssertionError):
-        return "stories_json must be a JSON array of 'title::objective' strings."
-    return mt.goals_create(brief, stories, force=True)
+    @tool("goals_create")
+    def t_goals_create(brief: str, stories_json: str) -> str:
+        """Create the story plan. stories_json is a JSON array of 'title::objective'
+        strings. Each objective MUST name the exact files the story may touch, and the
+        file sets of different stories MUST be disjoint (that is what makes parallel
+        worktree agents merge cleanly)."""
+        try:
+            stories = json.loads(stories_json)
+            assert isinstance(stories, list) and all(isinstance(s, str) for s in stories)
+        except (ValueError, AssertionError):
+            return "stories_json must be a JSON array of 'title::objective' strings."
+        return mt.goals_create(brief, stories, force=True)
 
+    @tool("goals_status")
+    def t_goals_status() -> str:
+        """Show the current plan and each story's status."""
+        return mt.goals_status()
 
-@tool("goals_status")
-def t_goals_status() -> str:
-    """Show the current plan and each story's status."""
-    return mt.goals_status()
+    return [t_brain_recall, t_goals_create, t_goals_status]
 
 
 def planner_agent():
+    Agent, _, _, tool = _crewai()
     return Agent(
         role="Build planner",
         goal="Decompose a feature into the smallest set of sequential-safe stories with "
@@ -82,12 +91,13 @@ def planner_agent():
                   "git worktree. Overlapping file scopes cause merge conflicts; vague "
                   "objectives cause scope creep. You write objectives that name exact "
                   "files and end with the verification command.",
-        tools=[t_brain_recall, t_goals_create, t_goals_status],
+        tools=_planner_tools(tool),
         llm=MODEL, verbose=True,
     )
 
 
 def reviewer_agent():
+    Agent, _, _, _ = _crewai()
     return Agent(
         role="Story reviewer",
         goal="Decide from evidence whether a story is complete or failed.",
@@ -98,29 +108,49 @@ def reviewer_agent():
 
 
 def plan(feature: str) -> str:
-    crew = Crew(agents=[planner_agent()], tasks=[Task(
+    _, Crew, Task, _ = _crewai()
+    agent = planner_agent()  # ONE instance — Task and Crew must reference the same object
+    crew = Crew(agents=[agent], tasks=[Task(
         description=(
             "Plan this feature for the MindForge repo. First call brain_recall on the "
             "feature topic. Then create 1-4 stories via goals_create (JSON array of "
             f"'title::objective' strings), disjoint file scopes. Feature: {feature}"),
         expected_output="The goals_create output confirming the plan, then one line per "
                         "story explaining its file scope.",
-        agent=planner_agent(),
+        agent=agent,
     )])
     return str(crew.kickoff())
 
 
 def review(story_id: str) -> str:
+    _, Crew, Task, _ = _crewai()
     evidence = mt.review_story(story_id)
-    crew = Crew(agents=[reviewer_agent()], tasks=[Task(
+    agent = reviewer_agent()  # ONE instance — Task and Crew must reference the same object
+    crew = Crew(agents=[agent], tasks=[Task(
         description=(
             f"Review story {story_id}. Evidence follows. Verdict rules: commits exist, "
             "diff stays within the story's file scope, log shows tests were RUN and "
             "passed → COMPLETE; anything else → FAILED with the reason.\n\n" + evidence),
         expected_output="One line: 'VERDICT: COMPLETE — <reason>' or 'VERDICT: FAILED — <reason>'.",
-        agent=reviewer_agent(),
+        agent=agent,
     )])
     return str(crew.kickoff())
+
+
+def verify_cmd() -> str:
+    """Gate command resolution: MINDFORGE_VERIFY_CMD env override → a verify_cmd recorded
+    on a plan story (last one wins — the final story owns the gate) → the suite default."""
+    env = os.environ.get("MINDFORGE_VERIFY_CMD")
+    if env:
+        return env
+    try:
+        plan_ = json.loads((mt.REPO / ".fablize" / "goals.json").read_text(encoding="utf-8"))
+        for g in reversed(plan_.get("goals", [])):
+            if isinstance(g, dict) and g.get("verify_cmd"):
+                return g["verify_cmd"]
+    except (OSError, ValueError):
+        pass
+    return DEFAULT_VERIFY
 
 
 def cycle(dry_run: bool = False) -> None:
@@ -140,13 +170,23 @@ def cycle(dry_run: bool = False) -> None:
         print(mt.run_story(sid))
         verdict = review(sid)
         print(verdict)
-        mt.goals_next()
+        # Guard: goals_next activates the FIRST pending/in_progress story, which is only sid
+        # if the plan hasn't drifted (another driver, a stuck story). Checkpointing a story
+        # the engine did not activate would corrupt the ledger — verify before acting.
+        nxt = mt.goals_next()
+        m = re.search(r"handoff — (G\d+)", nxt)
+        active = m.group(1) if m else None
+        if active != sid:
+            print(f"cycle: goals_next activated {active or 'no story'}, not {sid} — "
+                  f"skipping checkpoint/merge for {sid} (plan drifted; inspect with goals.py status).")
+            results.append((sid, "skipped"))
+            continue
         if "VERDICT: COMPLETE" in verdict:
-            gate = mt.run_verification()
+            vcmd = verify_cmd()
+            gate = mt.run_verification(vcmd)
             tail = gate.splitlines()[-1] if gate else ""
             mt.goals_checkpoint(sid, "complete", verdict[:200],
-                                verify_cmd="python3 -m pytest fablize/tests/ -q",
-                                verify_evidence=tail)
+                                verify_cmd=vcmd, verify_evidence=tail)
             print(mt.merge_story(sid))
             results.append((sid, "merged"))
         else:

@@ -268,6 +268,7 @@ class BundleTests(Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         pkg = out / "fablize-portable"
         for rel in ("scripts/brain.py", "scripts/goals.py", "scripts/spec.py", "scripts/metrics.py",
+                    "scripts/orchestrate.py",
                     "hooks/brain_reflect.py", "hooks/destructive_guard.py", "apply.sh", "QUICKSTART.md"):
             self.assertTrue((pkg / rel).exists(), f"missing {rel} in bundle tree")
         self.assertTrue(list((pkg / "packs").glob("*.txt")), "no packs in bundle")
@@ -275,6 +276,8 @@ class BundleTests(Base):
         names = zipfile.ZipFile(out / "fablize-portable.zip").namelist()
         self.assertTrue(any(n.endswith("hooks/brain_reflect.py") for n in names), "hook missing from zip")
         self.assertTrue(any(n.endswith("scripts/brain.py") for n in names), "brain missing from zip")
+        self.assertTrue(any(n.endswith("scripts/orchestrate.py") for n in names),
+                        "orchestrate missing from zip")
 
 
 if __name__ == "__main__":

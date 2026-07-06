@@ -16,6 +16,7 @@ the failure text IS the signal the reviewer needs.
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -29,17 +30,23 @@ SCRIPTS = HERE / "fablize" / "scripts"
 LOGS = REPO / ".fablize" / "orchestrator"
 
 
-def _run(args, timeout=None, cwd=None):
-    """Run a command; return combined output + a clear rc marker on failure."""
+def _run_rc(args, timeout=None, cwd=None):
+    """Run a command; return (rc, combined output). rc is None on timeout — callers that
+    branch on failure (merge_story) need the real code, not a text marker to grep for."""
     try:
         r = subprocess.run(args, cwd=str(cwd or REPO), capture_output=True,
                            text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return f"[timeout after {timeout}s] {' '.join(map(str, args))}"
+        return None, f"[timeout after {timeout}s] {' '.join(map(str, args))}"
     out = (r.stdout or "") + (r.stderr or "")
     if r.returncode != 0:
         out += f"\n[exit code {r.returncode}]"
-    return out.strip()
+    return r.returncode, out.strip()
+
+
+def _run(args, timeout=None, cwd=None):
+    """Run a command; return combined output + a clear rc marker on failure."""
+    return _run_rc(args, timeout=timeout, cwd=cwd)[1]
 
 
 def _engine(script, *args, timeout=120):
@@ -115,9 +122,16 @@ def review_story(story_id, log_lines=40):
 
 def merge_story(story_id):
     """Merge a REVIEWED story branch and clean up its worktree. Only call after the
-    reviewer decided 'complete' — this is the one state-changing git action here."""
+    reviewer decided 'complete' — this is the one state-changing git action here.
+    On a merge failure the merge is ABORTED and the branch/worktree left intact —
+    destroying the only copy of the work over a conflict would be unrecoverable."""
     branch = f"fablize/{story_id}"
-    out = [_run(["git", "merge", "--no-edit", branch])]
+    rc, merge_out = _run_rc(["git", "merge", "--no-edit", branch])
+    if rc != 0:  # conflict or any other failure (rc None = timeout counts too)
+        _run(["git", "merge", "--abort"])
+        return (f"MERGE CONFLICT: merging {branch} failed; the merge was aborted and the "
+                f"branch + worktree were left intact. Resolve manually, then re-merge.\n{merge_out}")
+    out = [merge_out]
     out.append(_run(["git", "worktree", "remove", "--force",
                      str(REPO / ".fablize" / "worktrees" / story_id)]))
     out.append(_run(["git", "branch", "-d", branch]))
@@ -125,8 +139,9 @@ def merge_story(story_id):
 
 
 def run_verification(cmd="python3 -m pytest fablize/tests/ -q", timeout=600):
-    """The gate command — run the project's test suite in the MAIN checkout."""
-    return _run(cmd.split(), timeout=timeout)
+    """The gate command — run the project's test suite in the MAIN checkout.
+    cmd is shell-quoted text (shlex), so quoted args survive: `python3 -c "print(1)"`."""
+    return _run(shlex.split(cmd), timeout=timeout)
 
 
 # --- memory (the brain compounds across crews too) -----------------------------

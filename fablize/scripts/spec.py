@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -69,6 +70,23 @@ def log(event, **kw):
         pass
 
 
+def atomic_write(path, text):
+    """Crash-safe durable write: stage into a temp file in the same dir, then os.replace
+    (atomic rename) so a crash mid-write can never truncate/corrupt the real state file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def cmd_lock(a):
     reqs = [r.strip() for r in a.req if r.strip()]
     if not reqs and not a.decision and not a.constraint:
@@ -86,8 +104,7 @@ def cmd_lock(a):
         "constraints": [c.strip() for c in a.constraint if c.strip()],
         "decisions": decisions,
     }
-    DIR.mkdir(parents=True, exist_ok=True)
-    SPEC.write_text(json.dumps(spec, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic_write(SPEC, json.dumps(spec, ensure_ascii=False, indent=1))
     log("spec_locked", reqs=len(reqs), constraints=len(spec["constraints"]), decisions=len(decisions))
     print(f"fablize: spec locked — {len(reqs)} requirement(s), {len(decisions)} decision(s) → {SPEC}")
     print("fablize: build against this; do not re-ask the user what is recorded here.")

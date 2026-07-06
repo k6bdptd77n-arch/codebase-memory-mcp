@@ -109,6 +109,60 @@ class ReviewToolTests(Base):
         out = self.t.run_verification(cmd="python3 -c print(40+2)")
         self.assertIn("42", out)
 
+    def test_run_verification_honors_quoted_cmd(self):
+        # shlex parsing: a quoted argument with spaces must arrive as ONE argv element
+        out = self.t.run_verification(cmd='python3 -c "print(40 + 2)"')
+        self.assertIn("42", out)
+
+
+class MergeToolTests(Base):
+    def _git(self, *args, env=None):
+        return subprocess.run(["git", *args], cwd=self.repo, env=env or self.genv,
+                              capture_output=True, text=True)
+
+    def setUp(self):
+        super().setUp()
+        self.genv = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                         GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", HOME=str(self.tmp))
+
+    @unittest.skipUnless(HAS_GIT, "git not available")
+    def test_merge_conflict_aborts_and_keeps_branch(self):
+        # two branches editing the same line: merge must ABORT, leave a clean tree,
+        # and keep the story branch — the work is not destroyed over a conflict.
+        self._git("init", "-q")
+        (self.repo / "f.txt").write_text("base\n", encoding="utf-8")
+        self._git("add", "."); self._git("commit", "-qm", "init")
+        self._git("checkout", "-q", "-b", "fablize/G001")
+        (self.repo / "f.txt").write_text("story version\n", encoding="utf-8")
+        self._git("add", "."); self._git("commit", "-qm", "G001: story edit")
+        self._git("checkout", "-q", "-")
+        (self.repo / "f.txt").write_text("main version\n", encoding="utf-8")
+        self._git("add", "."); self._git("commit", "-qm", "main edit")
+        out = self.t.merge_story("G001")
+        self.assertTrue(out.startswith("MERGE CONFLICT"), out)
+        # tree is clean and NOT mid-merge (no MERGE_HEAD, no unmerged paths)
+        st = self._git("status", "--porcelain").stdout.strip()
+        self.assertEqual(st, "", f"tree not clean after abort: {st}")
+        self.assertFalse((self.repo / ".git" / "MERGE_HEAD").exists(), "still MERGING")
+        # the story branch survived for manual resolution
+        branches = self._git("branch", "--list", "fablize/G001").stdout
+        self.assertIn("fablize/G001", branches)
+
+    @unittest.skipUnless(HAS_GIT, "git not available")
+    def test_clean_merge_still_merges_and_deletes_branch(self):
+        self._git("init", "-q")
+        (self.repo / "f.txt").write_text("base\n", encoding="utf-8")
+        self._git("add", "."); self._git("commit", "-qm", "init")
+        self._git("checkout", "-q", "-b", "fablize/G001")
+        (self.repo / "new.txt").write_text("story\n", encoding="utf-8")
+        self._git("add", "."); self._git("commit", "-qm", "G001: add new.txt")
+        self._git("checkout", "-q", "-")
+        out = self.t.merge_story("G001")
+        self.assertNotIn("MERGE CONFLICT", out)
+        self.assertTrue((self.repo / "new.txt").exists(), "merge did not land")
+        branches = self._git("branch", "--list", "fablize/G001").stdout
+        self.assertNotIn("fablize/G001", branches)
+
 
 class BrainToolTests(Base):
     def test_reflect_then_recall_roundtrip(self):
