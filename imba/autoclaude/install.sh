@@ -53,7 +53,7 @@ echo "✓ quota_guard hook installed at $HOOK_DST"
 
 # 2b) wire the PreToolUse hook into ~/.claude/settings.json (idempotent)
 SETTINGS="$CLAUDE_DIR/settings.json" python3 - <<'PY'
-import json, os
+import json, os, tempfile
 path = os.environ["SETTINGS"]
 data = {}
 if os.path.exists(path):
@@ -75,8 +75,16 @@ else:
     pre.append({"matcher": "*", "hooks": [
         {"type": "command", "command": cmd, "timeout": 10,
          "statusMessage": "Checking quota window..."}]})
-    with open(path, "w") as fh:
-        json.dump(data, fh, indent=2, ensure_ascii=False); fh.write("\n")
+    d = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False); fh.write("\n")
+        os.replace(tmp, path)  # atomic
+    except OSError:
+        try: os.unlink(tmp)
+        except OSError: pass
+        print(f"! could not write {path} — left unchanged; add PreToolUse manually"); raise SystemExit(0)
     print("✓ settings.json PreToolUse wired to quota_guard")
 PY
 
@@ -89,7 +97,7 @@ echo "✓ episodic-logger + memory-guard + prompt-upgrade + model-router hooks i
 
 # 2d) wire memory hooks into ~/.claude/settings.json (idempotent)
 SETTINGS="$CLAUDE_DIR/settings.json" python3 - <<'PY'
-import json, os
+import json, os, tempfile
 path = os.environ["SETTINGS"]
 data = {}
 if os.path.exists(path):
@@ -123,8 +131,16 @@ ensure("UserPromptSubmit", "model_router.py", {
         "command": 'python3 "$HOME/.claude/hooks/model_router.py"',
         "timeout": 10}]})
 
-with open(path, "w") as fh:
-    json.dump(data, fh, indent=2, ensure_ascii=False); fh.write("\n")
+d = os.path.dirname(path) or "."
+fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False); fh.write("\n")
+    os.replace(tmp, path)  # atomic
+except OSError:
+    try: os.unlink(tmp)
+    except OSError: pass
+    print(f"! could not write {path} — left unchanged; memory hooks not wired"); raise SystemExit(0)
 PY
 
 # 2e) memory-prune skill -> global skills dir

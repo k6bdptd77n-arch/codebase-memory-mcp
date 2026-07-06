@@ -1,34 +1,118 @@
 #!/usr/bin/env bash
-# Combined installer: codebase-memory-mcp (memory layer) + fablize (procedure layer).
-# One command sets up both. The C core is built if needed, registered as an MCP server for
-# your agents, then the fablize disciplines are applied to the current project.
-# Usage: bash install-combined.sh [target-project-dir]   (default: current directory)
+# Combined installer: MindForge = codebase-memory-mcp (Memory) + fablize (Procedure + Brain).
+# One command sets up the core stack. Optional layers (Economy / Orchestration / GUI) are opt-in.
+#
+# Usage: bash install-combined.sh [--with-economy] [--with-crew] [--with-ui] [--all] [target-project-dir]
+#   default target : current directory
+#   default install: core layers only (Memory + Procedure + Brain)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-TARGET="${1:-$PWD}"
 BIN="$ROOT/build/c/codebase-memory-mcp"
 
-echo "=== codebase-memory-mcp + fablize — combined install ==="
+WITH_ECONOMY=0
+WITH_CREW=0
+WITH_UI=0
+TARGET=""
+
+usage() {
+  cat <<'EOF'
+MindForge combined installer
+
+Usage: bash install-combined.sh [flags] [target-project-dir]
+
+Core layers (always installed):
+  Memory      build + register the codebase-memory-mcp C engine as an MCP server
+  Procedure   apply the fablize disciplines to the target project
+  Brain       cross-session memory (installed together with fablize)
+
+Optional layers (opt-in):
+  --with-economy   token-economy layer   -> imba/setup.sh (autoclaude hooks + Hermes economizer)
+  --with-crew      CrewAI orchestration   -> crew/.venv + pip install -r crew/requirements.txt
+  --with-ui        Electron desktop GUI   -> cd mindforge-ui && npm install
+  --all            install all optional layers above
+  -h, --help       show this help and exit
+
+Args:
+  target-project-dir   where to apply the fablize disciplines (default: current directory)
+
+Each step is idempotent (safe to re-run). A summary of what was installed is printed at the end.
+EOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --with-economy) WITH_ECONOMY=1 ;;
+    --with-crew)    WITH_CREW=1 ;;
+    --with-ui)      WITH_UI=1 ;;
+    --all)          WITH_ECONOMY=1; WITH_CREW=1; WITH_UI=1 ;;
+    -h|--help)      usage; exit 0 ;;
+    -*)             echo "! unknown flag: $arg" >&2; echo >&2; usage >&2; exit 2 ;;
+    *)              TARGET="$arg" ;;
+  esac
+done
+TARGET="${TARGET:-$PWD}"
+
+echo "=== MindForge — combined install ==="
+
+# --- Core layers -------------------------------------------------------------
 
 # 1. Memory layer: build the binary if it isn't there yet.
 if [ ! -x "$BIN" ]; then
-  echo "[1/3] Building the memory engine (codebase-memory-mcp)..."
+  echo "[core 1/3] Building the memory engine (codebase-memory-mcp)..."
   "$ROOT/scripts/build.sh"
 else
-  echo "[1/3] Memory engine already built: $BIN"
+  echo "[core 1/3] Memory engine already built: $BIN"
 fi
 
 # 2. Memory layer: register the MCP server + agent instruction files.
-echo "[2/3] Registering the MCP server with your agents..."
+echo "[core 2/3] Registering the MCP server with your agents..."
 "$BIN" install -y || {
   echo "  ! 'install' returned non-zero — configure the MCP server manually (see README)."; }
 
-# 3. Procedure layer: apply the fablize disciplines to the target project.
-echo "[3/3] Applying the fablize procedure layer..."
+# 3. Procedure + Brain layer: apply the fablize disciplines to the target project.
+echo "[core 3/3] Applying the fablize procedure + brain layer..."
 bash "$ROOT/fablize/install.sh" "$TARGET"
 
+# --- Optional layers ---------------------------------------------------------
+ECONOMY_STATUS="skipped (enable with --with-economy)"
+CREW_STATUS="skipped (enable with --with-crew)"
+UI_STATUS="skipped (enable with --with-ui)"
+
+if [ "$WITH_ECONOMY" = "1" ]; then
+  echo "[opt] Economy: installing the imba token-economy layer..."
+  bash "$ROOT/imba/setup.sh"
+  ECONOMY_STATUS="installed (imba/setup.sh)"
+fi
+
+if [ "$WITH_CREW" = "1" ]; then
+  echo "[opt] Orchestration: setting up the CrewAI virtualenv (crew/.venv)..."
+  if command -v python3 >/dev/null 2>&1; then
+    [ -d "$ROOT/crew/.venv" ] || python3 -m venv "$ROOT/crew/.venv"
+    "$ROOT/crew/.venv/bin/pip" install -r "$ROOT/crew/requirements.txt"
+    CREW_STATUS="installed (crew/.venv)"
+  else
+    echo "  ! python3 not found — cannot create crew/.venv. Install Python 3, then re-run with --with-crew." >&2
+    CREW_STATUS="FAILED (python3 missing)"
+  fi
+fi
+
+if [ "$WITH_UI" = "1" ]; then
+  echo "[opt] GUI: installing mindforge-ui npm dependencies..."
+  if command -v npm >/dev/null 2>&1; then
+    ( cd "$ROOT/mindforge-ui" && npm install )
+    UI_STATUS="installed (mindforge-ui/node_modules)"
+  else
+    echo "  ! npm not found — install Node.js (https://nodejs.org), then re-run with --with-ui." >&2
+    UI_STATUS="FAILED (npm missing)"
+  fi
+fi
+
 echo
-echo "=== Done. Both layers installed. ==="
-echo "  Memory  : codebase-memory-mcp MCP tools (search_graph, trace_path, get_architecture, …)"
-echo "  Method  : fablize disciplines in $TARGET (see INTEGRATION.md)"
+echo "=== Done. MindForge install summary ==="
+echo "  Memory        : codebase-memory-mcp MCP tools (search_graph, trace_path, get_architecture, …)"
+echo "  Procedure     : fablize disciplines in $TARGET (see INTEGRATION.md)"
+echo "  Brain         : cross-session memory (fablize/scripts/brain.py)"
+echo "  Economy       : $ECONOMY_STATUS"
+echo "  Orchestration : $CREW_STATUS"
+echo "  GUI           : $UI_STATUS"
 echo "  Re-run 'bash fablize/install.sh <dir>' to add the disciplines to another project."

@@ -18,17 +18,31 @@
 
 High-quality parsing through [tree-sitter](https://tree-sitter.github.io/tree-sitter/) AST analysis across all 158 languages, enhanced with [**Hybrid LSP** semantic type resolution](#hybrid-lsp) for Python, TypeScript / JavaScript / JSX / TSX, PHP, C#, Go, C, C++, Java, Kotlin, and Rust — producing a persistent knowledge graph of functions, classes, call chains, HTTP routes, and cross-service links. 14 MCP tools. Zero dependencies. Plug and play across 11 coding agents.
 
-> ### 🧭 This distribution: codebase-memory-mcp **+ fablize**
+> ### 🧭 This distribution: **MindForge** — codebase-memory-mcp **+ fablize + brain**
 >
 > This fork pairs the memory engine with **[fablize](fablize/)** — a procedure layer that
 > makes an agent *work* well, not just *see* well. The memory layer answers **what the code
 > is**; fablize answers **how to work on it**: clarify before building, complete with
 > evidence, investigate systematically (using `trace_path` as the literal causal chain),
 > verify the structural effect of a change, and escalate honestly at the model's ceiling.
-> Two complementary layers, one install — see **[INTEGRATION.md](INTEGRATION.md)**.
+> A third **brain** layer adds cross-session memory. Three core layers — **Memory** (the map),
+> **Procedure** (the method), **Brain** (the history) — one install; see
+> **[INTEGRATION.md](INTEGRATION.md)** and **[fablize/MINDFORGE.md](fablize/MINDFORGE.md)**.
+>
+> #### The MindForge stack
+>
+> | Component | Folder | Role |
+> |---|---|---|
+> | **Memory** | [`src/`](src/) | C engine — the code knowledge graph (14 MCP tools) |
+> | **Procedure** | [`fablize/`](fablize/) | disciplines: clarify, complete-with-evidence, investigate, verify, escalate |
+> | **Brain** | [`fablize/scripts/brain.py`](fablize/scripts/brain.py) | persistent cross-session memory (preferences, goals, lessons) |
+> | **Economy** *(optional)* | [`imba/`](imba/) | token-economy hooks + Hermes economizer |
+> | **Orchestration** *(optional)* | [`crew/`](crew/) | CrewAI multi-agent runner |
+> | **GUI** *(optional)* | [`mindforge-ui/`](mindforge-ui/) | Electron desktop app |
 >
 > ```bash
-> bash install-combined.sh        # builds the engine, registers MCP, applies the disciplines
+> bash install-combined.sh          # core: Memory + Procedure + Brain
+> bash install-combined.sh --all    # + Economy, Orchestration, GUI (or --with-economy/--with-crew/--with-ui)
 > ```
 >
 > The C core below is **unmodified upstream** — fablize lives entirely in `fablize/` (pure
@@ -57,7 +71,13 @@ High-quality parsing through [tree-sitter](https://tree-sitter.github.io/tree-si
 
 ## Quick Start
 
-**One-line install** (macOS / Linux):
+**Full stack** (macOS / Linux) — memory engine + fablize + brain in one command (this fork):
+```bash
+git clone https://github.com/k6bdptd77n-arch/codebase-memory-mcp.git && cd codebase-memory-mcp && bash install-combined.sh
+```
+Add optional layers with `--with-economy` (imba), `--with-crew` (CrewAI), `--with-ui` (Electron GUI), or `--all`. Run `bash install-combined.sh --help` for details.
+
+**Engine only** (upstream binary — no procedure/brain layers):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash
 ```
@@ -79,6 +99,8 @@ notepad install.ps1
 .\install.ps1
 
 ```
+
+> **Windows + the fork layers:** `install.ps1` installs the **engine only**. The fork layers (fablize, imba, crew) are bash-installed — on Windows, run `install-combined.sh` under **WSL** or **Git Bash**.
 
 Options: `--ui` (graph visualization), `--skip-config` (binary only, no agent setup), `--dir=<path>` (custom location).
 
