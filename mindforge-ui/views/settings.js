@@ -119,13 +119,14 @@ window.Views.settings = (() => {
       box.appendChild(row);
     };
     const mcpBox = el.querySelector(".mcp-toggles");
-    if (!inv.mcp.length) mcpBox.innerHTML = '<div class="toggles-empty">MCP-серверов не найдено — добавьте через <code>claude mcp add</code></div>';
+    if (!inv.mcp.length) mcpBox.innerHTML = `<div class="toggles-empty">${invNote(
+      "MCP-серверов не найдено — добавьте через <code>claude mcp add</code>")}</div>`;
     for (const s of inv.mcp)
       toggleRow(mcpBox, s.name, rc.mcp,
         `<i class="mcp-dot ${s.connected ? "ok" : ""}"></i><span class="tg-name">${esc(s.name)}</span>` +
         (s.defined ? "" : '<span class="tg-src">плагин/облако</span>'));
     const skBox = el.querySelector(".skill-toggles");
-    if (!inv.skills.length) skBox.innerHTML = '<div class="toggles-empty">скиллов не найдено</div>';
+    if (!inv.skills.length) skBox.innerHTML = `<div class="toggles-empty">${invNote("скиллов не найдено")}</div>`;
     for (const s of inv.skills)
       toggleRow(skBox, s.name, rc.skills,
         `<span class="tg-name" title="${esc(s.description)}">${esc(s.name)}</span>` +
@@ -196,7 +197,7 @@ window.Views.settings = (() => {
   function renderMcpList() {
     const box = $("mcp-list");
     box.innerHTML = "";
-    if (!inv.mcp.length) { box.innerHTML = '<div class="toggles-empty">серверов нет</div>'; return; }
+    if (!inv.mcp.length) { box.innerHTML = `<div class="toggles-empty">${invNote("серверов нет")}</div>`; return; }
     for (const s of inv.mcp) {
       const row = document.createElement("div");
       row.className = "mcp-row";
@@ -222,13 +223,31 @@ window.Views.settings = (() => {
     b.textContent = `Мозг·${short(cfg.roles.brain.model)} / План·${short(cfg.roles.planner.model)} / Рука·${cfg.roles.hand.cli && cfg.roles.hand.cli !== "claude" ? cfg.roles.hand.cli : short(cfg.roles.hand.model)}`;
   }
 
+  // inv states: null → not asked yet; {loading:true} → mcp list in flight;
+  // {failed:true} → claude mcp list не ответил. Роль-карточки рендерятся сразу.
+  const invNote = (fallback) => inv && inv.loading ? "инвентарь MCP загружается…"
+    : inv && inv.failed ? "MCP-инвентарь недоступен" : fallback;
+
+  let invPending = false;
   async function refresh() {
     if (dirty) return;                        // не затирать несохранённое фоновым обновлением
-    cfg = await window.mf.crewGet();
+    const body = $("settings-body");          // и не сбрасывать фокус, пока пользователь в поле
+    if (body && document.activeElement && body.contains(document.activeElement)) return;
+    try { cfg = await window.mf.crewGet(); } catch { return; }
     headerBadge();                            // бейдж в шапке — сразу, не дожидаясь mcp list
-    inv = await window.mf.crewInventory();
-    rerenderCrew();
+    if (!inv || inv.loading) inv = { mcp: [], skills: [], loading: true };
+    rerenderCrew();                           // карточки сразу — инвентарь дольётся ниже
     renderProviders();
+    renderMcpList();
+    if (invPending) return;                   // mcp list уже в полёте — не плодить процессы
+    invPending = true;
+    try {
+      const got = await window.mf.crewInventory();
+      inv = got && Array.isArray(got.mcp) ? got : { mcp: [], skills: [], failed: true };
+    } catch { inv = { mcp: [], skills: [], failed: true }; }
+    finally { invPending = false; }
+    if (dirty) return;                        // пользователь уже что-то трогает — не перерисовывать
+    rerenderCrew();
     renderMcpList();
   }
 

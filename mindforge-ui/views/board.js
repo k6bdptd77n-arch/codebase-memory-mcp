@@ -47,15 +47,18 @@ window.Views.board = (() => {
     const gate = firstOpenId();
     for (const g of snap.goals.goals) {
       const st = laneState(g);
+      const rt = snap.states[g.id] || {};
       const el = document.createElement("div");
       el.className = `lane ${st}`;
       el.dataset.id = g.id;
       const pct = { complete: 100, review: 78, running: 0, failed: 60, in_progress: 40, pending: 0 }[st];
+      const tele = st === "running" && (rt.commits != null || rt.elapsedMin != null)
+        ? `<span class="lane-tele">${rt.commits ?? 0} коммитов · ${rt.elapsedMin ?? 0}м</span>` : "";
       el.innerHTML = `
         <div class="lane-top">
           <span class="lane-id">${g.id}</span>
           <span class="lane-title">${esc(g.title)}</span>
-          <span class="lane-status">${st === "running" ? '<span class="pulse"></span>' : ""}${STATE_LABEL[st]}</span>
+          <span class="lane-status">${tele}${st === "running" ? '<span class="pulse"></span>' : ""}${STATE_LABEL[st]}</span>
         </div>
         <div class="lane-obj" title="нажмите, чтобы развернуть">${esc(g.objective)}</div>
         <div class="rail"><i style="width:${pct}%"></i></div>
@@ -122,6 +125,25 @@ window.Views.board = (() => {
 
   // review drawer
   let drawerId = null;
+  function renderPatch(body, ev) {
+    // the actual patch, so approving is never blind: monospace block, +/- coloring
+    const head = document.createElement("div");
+    head.className = "diff-head";
+    head.textContent = "=== патч" + (ev.truncated ? " (показаны первые 1500 строк)" : "") + ":";
+    body.appendChild(head);
+    const block = document.createElement("div");
+    block.className = "diff-block";
+    for (const line of ev.patch.split("\n")) {
+      const row = document.createElement("div");
+      row.className = "diff-line" +
+        (line.startsWith("+++") || line.startsWith("---") || /^(diff |index |@@)/.test(line) ? " diff-meta"
+          : line.startsWith("+") ? " diff-add"
+          : line.startsWith("-") ? " diff-del" : "");
+      row.textContent = line === "" ? " " : line;
+      block.appendChild(row);
+    }
+    body.appendChild(block);
+  }
   async function openReview(id) {
     drawerId = id;
     const d = document.getElementById("drawer");
@@ -130,8 +152,11 @@ window.Views.board = (() => {
     const body = document.getElementById("drawer-body");
     body.textContent = "собираю доказательства…";
     d.classList.remove("hidden");
-    const ev = await window.mf.reviewEvidence(id);
-    body.textContent = ev.text;
+    try {
+      const ev = await window.mf.reviewEvidence(id);
+      body.textContent = ev.text;
+      if (ev.ok && ev.patch) renderPatch(body, ev);
+    } catch { body.textContent = "не удалось собрать доказательства — попробуйте ещё раз"; }
   }
   function closeReview() { document.getElementById("drawer").classList.add("hidden"); drawerId = null; }
 
@@ -211,14 +236,26 @@ window.Views.board = (() => {
   const note = (t) => { document.getElementById("tm-note").textContent = t; };
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+  // A failed IPC round-trip must never blank the board: keep the last good
+  // snapshot, and only believe "плана нет" after two consecutive empty reads
+  // (a lone null usually means goals.py was mid-write).
+  let emptyStreak = 0;
   async function refresh() {
-    snap = await window.mf.snapshot();
-    render();
-    document.getElementById("tm-plan").textContent = snap.goals
-      ? `${snap.goals.goals.filter((g) => g.status === "complete").length}/${snap.goals.goals.length} · ${snap.goals.brief.slice(0, 48)}`
-      : "плана нет";
-    const live = Object.values(snap.states).filter((s) => s.running).length;
-    document.getElementById("tm-agents").textContent = `агентов: ${live}`;
+    try {
+      const s = await window.mf.snapshot();
+      if (s && s.goals) { snap = s; emptyStreak = 0; }
+      else {
+        emptyStreak++;
+        if (emptyStreak >= 2 || !snap || !snap.goals) snap = s || snap;
+      }
+      render();
+      const goals = snap && snap.goals;
+      document.getElementById("tm-plan").textContent = goals
+        ? `${goals.goals.filter((g) => g.status === "complete").length}/${goals.goals.length} · ${String(goals.brief || "").slice(0, 48)}`
+        : "плана нет";
+      const live = Object.values((snap && snap.states) || {}).filter((x) => x.running).length;
+      document.getElementById("tm-agents").textContent = `агентов: ${live}`;
+    } catch { /* keep the last rendered state */ }
   }
 
   function init() {

@@ -44,6 +44,9 @@ contextBridge.exposeInMainWorld("mf", {
   ollamaModels: () => ipcRenderer.invoke("ollama-models"),
   cliAvailable: (cmd) => ipcRenderer.invoke("cli-available", cmd),
 
+  // 3D graph viewer (URL is hardcoded in main)
+  openGraph: () => ipcRenderer.invoke("open-graph"),
+
   // native confirmation for destructive actions
   confirm: (title, detail) => ipcRenderer.invoke("confirm", { title, detail }),
 });

@@ -143,6 +143,8 @@ body.theme-deck .lane:hover { background: var(--hover); }
 .lane-log { font: 11.5px/1.55 var(--mono); color: var(--muted); background: var(--bg);
   border: 1px solid var(--line); border-radius: var(--r); padding: 8px 11px;
   margin-bottom: 9px; max-height: 120px; overflow: auto; white-space: pre-wrap; }
+.lane-tele { font: 11px var(--mono); color: var(--dim); margin-right: 4px; }
+.lane.running .lane-tele { color: var(--muted); }
 .lane-actions { display: flex; gap: 8px; align-items: center; }
 .lane-evidence { font-size: 11.5px; color: var(--dim); margin-left: auto; max-width: 60ch;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -325,6 +327,9 @@ body.theme-deck .lane:hover { background: var(--hover); }
 .sb-item.on i { background: var(--ok); }
 .sb-item.warn i { background: var(--warn); }
 .sb-flex { flex: 1; }
+.sb-btn { background: none; border: none; color: var(--dim); cursor: pointer;
+  font-size: 11.5px; border-radius: 4px; }
+.sb-btn:hover { color: var(--text); background: var(--hover); }
 #tm-note { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 40vw; }
 
 /* ── drawer ─────────────────────────────────────────────────────────────── */
@@ -340,6 +345,15 @@ body.theme-deck .lane:hover { background: var(--hover); }
   max-height: 150px; overflow: auto; white-space: pre-wrap; }
 .drawer-progress .ok { color: var(--ok); }
 .drawer-progress .bad { color: var(--danger); }
+/* review patch: monospace block with minimal +/- coloring, consistent with theme */
+.diff-head { color: var(--bright); font-weight: 600; margin-top: 10px; }
+.diff-block { font: 11.5px/1.5 var(--mono); border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--bg); padding: 6px 0; margin-top: 6px;
+  overflow-x: auto; }
+.diff-line { padding: 0 11px; white-space: pre; }
+.diff-line.diff-add { color: var(--ok); background: var(--ok-dim); }
+.diff-line.diff-del { color: var(--danger); background: var(--danger-dim); }
+.diff-line.diff-meta { color: var(--dim); }
 
 /* ── empty states ───────────────────────────────────────────────────────── */
 .empty { display: flex; flex-direction: column; align-items: center; justify-content: center;

@@ -36,19 +36,25 @@ new ResizeObserver(() => { try { fit.fit(); } catch {} })
 
 // ── header: layer lights ─────────────────────────────────────────────────────
 async function refreshLayers() {
-  const l = await window.mf.layers();
-  const set = (id, on, value, warn) => {
-    const el = document.getElementById(`light-${id}`);
-    el.classList.toggle("on", !!on && !warn);
-    el.classList.toggle("warn", !!warn);
-    document.getElementById(`light-${id}-v`).textContent = value;
-  };
-  set("memory", !!l.memory, l.memory ? `${(l.memory.nodes / 1000).toFixed(1)}k узлов` : "офлайн");
-  set("procedure", !!l.procedure,
-    l.procedure ? `${l.procedure.done}/${l.procedure.total}` : "нет плана",
-    l.procedure && l.procedure.done < l.procedure.total);
-  set("brain", l.brain.facts > 0, `${l.brain.facts} фактов`);
+  try {
+    const l = await window.mf.layers();
+    if (!l) return;                       // keep the last rendered state
+    const set = (id, on, value, warn) => {
+      const el = document.getElementById(`light-${id}`);
+      el.classList.toggle("on", !!on && !warn);
+      el.classList.toggle("warn", !!warn);
+      document.getElementById(`light-${id}-v`).textContent = value;
+    };
+    set("memory", !!l.memory, l.memory ? `${(l.memory.nodes / 1000).toFixed(1)}k узлов` : "офлайн");
+    set("procedure", !!l.procedure,
+      l.procedure ? `${l.procedure.done}/${l.procedure.total}` : "нет плана",
+      l.procedure && l.procedure.done < l.procedure.total);
+    set("brain", (l.brain || {}).facts > 0, `${(l.brain || {}).facts ?? 0} фактов`);
+  } catch { /* keep the last rendered state */ }
 }
+
+// ── "Открыть 3D-граф" — statusbar action (URL is hardcoded in main) ──────────
+document.getElementById("open-graph").addEventListener("click", () => window.mf.openGraph());
 
 // ── autopilot toggle ─────────────────────────────────────────────────────────
 const ap = document.getElementById("autopilot");
@@ -76,4 +82,19 @@ window.mf.onChanged(() => {
   if (active !== "board" && window.Views[active] && window.Views[active].refresh)
     window.Views[active].refresh();
 });
-setInterval(refreshLayers, 20000);
+
+// Polling fallback: fs.watch(recursive) can silently fail or drop events on some
+// platforms — a cheap ~4s tick keeps the active view and lights honest.
+// (main memoizes snapshot ~500ms, so this stays lightweight.)
+let pollBusy = false;
+setInterval(async () => {
+  if (pollBusy) return;
+  pollBusy = true;
+  try {
+    const active = document.querySelector(".tab.active").dataset.tab;
+    const view = window.Views[active];
+    if (view && view.refresh) await view.refresh();
+    if (active !== "board") await window.Views.board.refresh();  // statusbar plan/agents counters
+    await refreshLayers();
+  } catch {} finally { pollBusy = false; }
+}, 4000);

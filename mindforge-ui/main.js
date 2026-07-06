@@ -1,5 +1,5 @@
 "use strict";
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -15,7 +15,7 @@ const SHOT = process.argv.includes("--shot");
 
 let win = null;
 let term = null;
-const running = new Map();                                  // story id → child process
+const running = new Map();                                  // story id → { child, started }
 
 // --- helpers -----------------------------------------------------------------
 function run(cmd, args, opts = {}) {
@@ -25,7 +25,21 @@ function run(cmd, args, opts = {}) {
   });
 }
 const engine = (script, args, opts) => run(PY, [path.join(SCRIPTS, script), ...args], opts);
-const readJSON = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } };
+// story ids arrive from the renderer — validate before they touch fs paths or git refs
+const okId = (s) => /^G\d{3,}$/.test(String(s));
+const sleepSync = (ms) => {
+  try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
+  catch { const end = Date.now() + ms; while (Date.now() < end) { /* busy-wait fallback */ } }
+};
+// tolerant read: a parse failure is usually goals.py mid-write — retry once after ~40ms
+const readJSON = (p) => {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { return JSON.parse(fs.readFileSync(p, "utf8")); }
+    catch (e) { if (e && e.code === "ENOENT") return null; }
+    if (attempt === 0) sleepSync(40);
+  }
+  return null;
+};
 const readTail = (p, n = 200) => {
   try { const l = fs.readFileSync(p, "utf8").split("\n"); return l.slice(-n).join("\n"); } catch { return ""; }
 };
@@ -79,17 +93,47 @@ function episodes() {
   return rows.sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || ""))).slice(0, 100);
 }
 
-async function snapshot() {
-  const goals = readJSON(path.join(FABLIZE, "goals.json"));
+// snapshot is called by board+metrics on every change tick — memoize ~500ms so
+// they share one computation (and one set of git subprocesses) per tick.
+let snapMemo = { t: 0, p: null };
+function snapshot() {
+  if (snapMemo.p && Date.now() - snapMemo.t < 500) return snapMemo.p;
+  snapMemo = { t: Date.now(), p: computeSnapshot() };
+  return snapMemo.p;
+}
+
+async function computeSnapshot() {
+  let goals = readJSON(path.join(FABLIZE, "goals.json"));
+  if (goals && (typeof goals !== "object" || Array.isArray(goals))) goals = null;
+  if (goals && !Array.isArray(goals.goals)) goals = { ...goals, goals: [] };
   const spec = readJSON(path.join(FABLIZE, "spec.json"));
   const ledger = readTail(path.join(FABLIZE, "ledger.jsonl"), 40)
     .split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } })
     .filter(Boolean).reverse();
-  // runtime enrichment: which stories have a live agent or a review-ready branch
+  // runtime enrichment: which stories have a live agent or a review-ready branch.
+  // One for-each-ref call replaces a rev-parse per goal.
   const states = {};
-  if (goals) for (const g of goals.goals) {
-    const br = await run("git", ["rev-parse", "--verify", "-q", `fablize/${g.id}`]);
-    states[g.id] = { running: running.has(g.id), branch: br.ok };
+  const glist = goals?.goals || [];
+  if (glist.length) {
+    const refs = await run("git", ["for-each-ref", "--format=%(refname:short)", "refs/heads/fablize/"]);
+    const branches = new Set(refs.out.split("\n").map((s) => s.trim()).filter(Boolean));
+    for (const g of glist) {
+      if (!g || !g.id) continue;
+      const st = { running: running.has(g.id), branch: branches.has(`fablize/${g.id}`) };
+      if (st.running) {                                       // lane telemetry for live agents
+        if (st.branch) {
+          const rl = await run("git", ["rev-list", "--count", `HEAD..fablize/${g.id}`]);
+          const n = parseInt(rl.out.trim(), 10);
+          if (rl.ok && Number.isFinite(n)) st.commits = n;
+        } else st.commits = 0;
+        let started = (running.get(g.id) || {}).started;
+        if (!started) {
+          try { started = fs.statSync(path.join(FABLIZE, "orchestrator", `${g.id}.log`)).mtimeMs; } catch {}
+        }
+        if (started) st.elapsedMin = Math.max(0, Math.round((Date.now() - started) / 60000));
+      }
+      states[g.id] = st;
+    }
   }
   return { goals, spec, ledger, states, repo: REPO };
 }
@@ -105,10 +149,11 @@ async function layers() {
     const me = (obj.projects || []).find((p) => p.root_path === REPO) || (obj.projects || [])[0];
     if (me) graph = { nodes: me.nodes, edges: me.edges, name: me.name };
   } catch {}
+  const glist = Array.isArray(goals?.goals) ? goals.goals : null;
   return {
     memory: graph,                                           // null → server not built/indexed
-    procedure: goals ? { brief: goals.brief, total: goals.goals.length,
-      done: goals.goals.filter((g) => g.status === "complete").length } : null,
+    procedure: glist ? { brief: goals.brief, total: glist.length,
+      done: glist.filter((g) => g && g.status === "complete").length } : null,
     brain: { facts },
   };
 }
@@ -163,7 +208,10 @@ async function apiChat(provider, model, prompt) {
 async function think(tag, role, prompt) {
   const model = (crewLoad().roles[role] || {}).model || "inherit";
   const m = model.match(/^(ollama|openai|openrouter)\/(.+)$/);
-  if (!m) return streamClaude(tag, prompt, await buildRoleArgs(role));
+  if (!m) {
+    const ra = await buildRoleArgs(role);
+    return streamClaude(tag, prompt, ra.args, ra.cleanup);
+  }
   const emit = (text) => send("claude-stream",
     { tag, ev: { type: "assistant", message: { content: [{ type: "text", text }] } } });
   emit(`[${model}] думаю…\n`);
@@ -247,9 +295,14 @@ function skillsInventory() {
   return out;
 }
 
+// Returns { args, cleanup }. When some MCP servers are toggled off, the enabled
+// definitions (which may carry env API tokens from ~/.claude.json) are written to
+// a private per-spawn temp dir (0700/0600); `cleanup` removes it once the spawned
+// child exits — callers MUST invoke it from both close and error handlers.
 async function buildRoleArgs(role) {
   const cfg = crewLoad().roles[role] || {};
   const args = [];
+  let cleanup = () => {};
   // provider-prefixed models (ollama/…, openai/…) are handled by think(), not the claude CLI
   if (cfg.model && cfg.model !== "inherit" && !/^(ollama|openai|openrouter)\//.test(cfg.model))
     args.push("--model", cfg.model);
@@ -258,20 +311,26 @@ async function buildRoleArgs(role) {
     const defs = mcpDefs();
     const enabled = {};
     for (const [n, d] of Object.entries(defs)) if (cfg.mcp[n] !== false) enabled[n] = d;
-    const f = path.join(os.tmpdir(), `mindforge-mcp-${role}.json`);
     try {
-      fs.writeFileSync(f, JSON.stringify({ mcpServers: enabled }, null, 1));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mindforge-"));
+      const f = path.join(dir, `mcp-${role}.json`);
+      fs.writeFileSync(f, JSON.stringify({ mcpServers: enabled }, null, 1), { mode: 0o600 });
       args.push("--mcp-config", f, "--strict-mcp-config");
+      let done = false;
+      cleanup = () => {
+        if (done) return; done = true;
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+      };
     } catch {}
   }
   const off = Object.entries(cfg.skills || {}).filter(([, v]) => v === false)
     .map(([n]) => `Skill(${n})`);
   if (off.length) args.push("--disallowedTools", ...off);
-  return args;
+  return { args, cleanup };
 }
 
 // --- claude -p streamed (planner / reviewer / free agent) ----------------------
-function streamClaude(tag, prompt, extraArgs = []) {
+function streamClaude(tag, prompt, extraArgs = [], cleanup = null) {
   return new Promise((resolve) => {
     const args = ["-p", prompt, "--output-format", "stream-json", "--verbose", ...extraArgs];
     const child = spawn("claude", args, { cwd: REPO, env: process.env });
@@ -289,8 +348,14 @@ function streamClaude(tag, prompt, extraArgs = []) {
         } catch {}
       }
     });
-    child.on("error", (e) => { send("claude-stream", { tag, error: e.message }); resolve({ ok: false, out: e.message }); });
-    child.on("close", (code) => resolve({ ok: code === 0, out: result }));
+    child.on("error", (e) => {
+      if (cleanup) { try { cleanup(); } catch {} }
+      send("claude-stream", { tag, error: e.message }); resolve({ ok: false, out: e.message });
+    });
+    child.on("close", (code) => {
+      if (cleanup) { try { cleanup(); } catch {} }
+      resolve({ ok: code === 0, out: result });
+    });
   });
 }
 
@@ -315,15 +380,23 @@ async function planGenerate(feature) {
   } catch { return { ok: false, error: "planner returned non-JSON:\n" + r.out.slice(0, 800) }; }
 }
 
+const PATCH_MAX_LINES = 1500;
 async function reviewEvidence(id) {
+  if (!okId(id)) return { ok: false, text: "(некорректный id стори)" };
   const branch = `fablize/${id}`;
   const base = await run("git", ["merge-base", "HEAD", branch]);
   if (!base.ok) return { ok: false, text: `(no branch ${branch})` };
   const b = base.out.trim();
   const stat = await run("git", ["diff", "--stat", b, branch]);
   const log = await run("git", ["log", "--oneline", `${b}..${branch}`]);
+  const diff = await run("git", ["diff", `${b}..${branch}`], { maxBuffer: 32 << 20 });
+  let patch = diff.ok ? diff.out : "";
+  let truncated = false;
+  const lines = patch.split("\n");
+  if (lines.length > PATCH_MAX_LINES) { patch = lines.slice(0, PATCH_MAX_LINES).join("\n"); truncated = true; }
   const agentLog = readTail(path.join(FABLIZE, "orchestrator", `${id}.log`), 40);
-  return { ok: true, text: `=== diff --stat:\n${stat.out}\n=== commits:\n${log.out}\n=== agent log tail:\n${agentLog}` };
+  return { ok: true, patch, truncated,
+    text: `=== diff --stat:\n${stat.out}\n=== commits:\n${log.out}\n=== agent log tail:\n${agentLog}` };
 }
 
 async function reviewLLM(id) {
@@ -343,8 +416,10 @@ async function reviewLLM(id) {
 async function storyApprove(_e, { id, evidence }) {
   const steps = [];
   const step = (name, r) => { steps.push({ name, ok: r.ok, out: (r.out + "\n" + (r.err || "")).trim().slice(-1200) }); return r.ok; };
+  if (!okId(id)) return { ok: false, steps: [{ name: "validate id", ok: false, out: "некорректный id стори" }] };
   const goals = readJSON(path.join(FABLIZE, "goals.json"));
-  const isFinal = goals && goals.goals.length && goals.goals[goals.goals.length - 1].id === id;
+  const glist = Array.isArray(goals?.goals) ? goals.goals : [];
+  const isFinal = glist.length > 0 && glist[glist.length - 1].id === id;
   const tests = await run(PY, ["-m", "pytest", "fablize/tests/", "-q"], { timeout: 300000 });
   if (!step("verification gate: pytest", tests)) return { ok: false, steps };
   const tail = tests.out.trim().split("\n").pop();
@@ -362,13 +437,17 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1560, height: 940, backgroundColor: "#070B16", show: !SHOT,
     title: "MindForge Control", titleBarStyle: "hiddenInset",
-    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false },
+    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true,
+      nodeIntegration: false, sandbox: true },
   });
   win.loadFile("index.html");
+  // the window renders only local files — never open popups or navigate away
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("will-navigate", (e) => e.preventDefault());
 
   // integrated terminal (real PTY)
-  const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
-  term = pty.spawn(shell, [], { name: "xterm-color", cols: 100, rows: 28, cwd: REPO, env: process.env });
+  const userShell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
+  term = pty.spawn(userShell, [], { name: "xterm-color", cols: 100, rows: 28, cwd: REPO, env: process.env });
   term.onData((d) => send("pty-data", d));
   term.onExit(() => send("pty-exit"));
   ipcMain.on("pty-input", (_e, d) => term && term.write(d));
@@ -383,8 +462,9 @@ function createWindow() {
     const r = await engine("metrics.py", ["--json", "--project", REPO]);
     try { return JSON.parse(r.out); } catch { return null; }
   });
-  ipcMain.handle("log-tail", (_e, id) => readTail(path.join(FABLIZE, "orchestrator", `${id}.log`), 120));
-  ipcMain.handle("review-evidence", (_e, id) => reviewEvidence(id));
+  ipcMain.handle("log-tail", (_e, id) =>
+    okId(id) ? readTail(path.join(FABLIZE, "orchestrator", `${id}.log`), 120) : "");
+  ipcMain.handle("review-evidence", (_e, id) => reviewEvidence(id));   // validates id itself
 
   // brain actions
   ipcMain.handle("brain-recall", (_e, q) => engine("brain.py", ["recall", "--query", q], { timeout: 30000 }));
@@ -393,32 +473,43 @@ function createWindow() {
 
   // story lifecycle
   ipcMain.handle("story-run", async (_e, id) => {
+    if (!okId(id)) return { ok: false, error: "некорректный id стори" };
     if (running.has(id)) return { ok: false, error: "уже запущено" };
     const hand = crewLoad().roles.hand;
-    const handArgs = hand.cli === "claude"
-      ? (await buildRoleArgs("hand")).map((a) => `--agent-arg=${a}`) : [];
+    const ra = hand.cli === "claude" ? await buildRoleArgs("hand") : { args: [], cleanup: () => {} };
+    const handArgs = ra.args.map((a) => `--agent-arg=${a}`);
     if (hand.cli && hand.cli !== "claude") handArgs.push("--agent-style", hand.cli);
     const child = spawn(PY, [path.join(SCRIPTS, "orchestrate.py"), "run", "--ids", id,
       "--parallel", "1", ...handArgs],
       { cwd: REPO, env: process.env });
-    running.set(id, child);
+    running.set(id, { child, started: Date.now() });
     send("story-state", { id, state: "running" });
-    child.on("close", (code) => { running.delete(id); send("story-state", { id, state: "exited", code }); });
-    child.on("error", () => { running.delete(id); send("story-state", { id, state: "exited", code: -1 }); });
+    child.on("close", (code) => {
+      try { ra.cleanup(); } catch {}
+      running.delete(id); send("story-state", { id, state: "exited", code });
+    });
+    child.on("error", () => {
+      try { ra.cleanup(); } catch {}
+      running.delete(id); send("story-state", { id, state: "exited", code: -1 });
+    });
     return { ok: true };
   });
   ipcMain.handle("story-stop", (_e, id) => {
+    if (!okId(id)) return { ok: false, error: "некорректный id стори" };
     const c = running.get(id);
-    if (c) { try { c.kill(); } catch {} running.delete(id); }
+    if (c) { try { c.child.kill(); } catch {} running.delete(id); }
     return { ok: true };
   });
-  ipcMain.handle("story-approve", storyApprove);
+  ipcMain.handle("story-approve", storyApprove);                       // validates id itself
   ipcMain.handle("story-fail", async (_e, { id, reason }) => {
+    if (!okId(id)) return { ok: false, error: "некорректный id стори" };
     await engine("goals.py", ["next"]);
     return engine("goals.py", ["checkpoint", "--id", id, "--status", "failed", "--evidence", reason || "rejected in review"]);
   });
-  ipcMain.handle("story-retry", (_e, id) => engine("goals.py", ["retry", "--id", id]));
-  ipcMain.handle("review-llm", (_e, id) => reviewLLM(id));
+  ipcMain.handle("story-retry", (_e, id) =>
+    okId(id) ? engine("goals.py", ["retry", "--id", id]) : { ok: false, error: "некорректный id стори" });
+  ipcMain.handle("review-llm", (_e, id) =>
+    okId(id) ? reviewLLM(id) : { verdict: "FAILED", text: "некорректный id стори" });
 
   // planner
   ipcMain.handle("plan-generate", (_e, feature) => planGenerate(feature));
@@ -438,6 +529,9 @@ function createWindow() {
     return r.ok;
   });
 
+  // 3D-graph viewer — URL is hardcoded here; never openExternal a renderer-supplied URL
+  ipcMain.handle("open-graph", () => { shell.openExternal("http://localhost:9749"); return true; });
+
   // confirmations for destructive actions live in main (native dialog — can't be spoofed by CSS)
   ipcMain.handle("confirm", async (_e, { title, detail }) => {
     const r = await dialog.showMessageBox(win, { type: "warning", buttons: ["Cancel", title],
@@ -452,13 +546,6 @@ function createWindow() {
       clearTimeout(t); t = setTimeout(() => send("fablize-changed", {}), 250);
     });
   } catch {}
-
-  // free-form agent stream (terminal tab helper) — kept from the prototype
-  let agent = null;
-  ipcMain.on("agent-run", (_e, { prompt }) => {
-    if (agent) { try { agent.kill(); } catch {} }
-    streamClaude("agent", String(prompt)).then(() => { agent = null; });
-  });
 
   if (SHOT) {
     win.webContents.once("did-finish-load", async () => {

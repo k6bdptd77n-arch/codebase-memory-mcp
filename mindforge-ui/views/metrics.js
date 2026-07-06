@@ -12,7 +12,11 @@ window.Views.metrics = (() => {
   }
 
   async function refresh() {
-    const [m, snap] = await Promise.all([window.mf.metrics(), window.mf.snapshot()]);
+    // a single rejected IPC must not blank the tab — keep the last rendered state
+    let m, snap;
+    try { [m, snap] = await Promise.all([window.mf.metrics(), window.mf.snapshot()]); }
+    catch { return; }
+    if (!snap) return;
     const cards = $("metric-cards");
     if (!m) { cards.innerHTML = card("—", "телеметрии пока нет"); }
     else {
