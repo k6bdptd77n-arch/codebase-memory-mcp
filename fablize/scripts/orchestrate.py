@@ -142,12 +142,24 @@ def agent_cmd(claude_cmd, prompt, permission_mode, agent_args=(), style="claude"
 # wholesale, each worktree gets a narrow allowlist: run tests/code, commit locally. No network
 # tools, no push, no rm.
 AGENT_ALLOW = [
-    "Bash(python3:*)", "Bash(python:*)", "Bash(pytest:*)",
-    "Bash(node:*)", "Bash(npm test:*)", "Bash(npm run:*)",
-    "Bash(make:*)", "Bash(go test:*)", "Bash(cargo test:*)",
+    "Bash(python3:*)", "Bash(python:*)", "Bash(pytest:*)", "Bash(poetry run:*)", "Bash(uv run:*)",
+    "Bash(node:*)", "Bash(npm test:*)", "Bash(npm run:*)", "Bash(pnpm:*)", "Bash(yarn:*)",
+    "Bash(make:*)", "Bash(go test:*)", "Bash(cargo test:*)", "Bash(deno test:*)",
+    "Bash(dotnet test:*)", "Bash(mvn:*)", "Bash(gradle:*)", "Bash(./gradlew:*)",
+    "Bash(bundle exec:*)", "Bash(rspec:*)", "Bash(composer:*)", "Bash(php:*)",
     "Bash(git add:*)", "Bash(git commit:*)", "Bash(git status)",
     "Bash(git diff:*)", "Bash(git log:*)",
 ]
+
+
+def extra_allow():
+    """Optional per-project allowlist entries from .fablize/crew.json → hand.allow — for a
+    stack whose test/build command isn't in the default set (a corrective escape hatch)."""
+    try:
+        cj = json.loads((DIR / "crew.json").read_text(encoding="utf-8"))
+        return [str(x) for x in ((cj.get("hand") or {}).get("allow") or []) if isinstance(x, str)]
+    except (OSError, ValueError, AttributeError):
+        return []
 
 
 def seed_agent_settings(wt):
@@ -159,7 +171,7 @@ def seed_agent_settings(wt):
         return
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"permissions": {"allow": AGENT_ALLOW}}, indent=1) + "\n",
+        path.write_text(json.dumps({"permissions": {"allow": AGENT_ALLOW + extra_allow()}}, indent=1) + "\n",
                         encoding="utf-8")
     except OSError:
         pass  # agent still runs, just without self-verification powers
@@ -176,8 +188,22 @@ def worktree_add_cmd(story):
 _WORKTREE_LOCK = threading.Lock()
 
 
+def ensure_head():
+    """A repo with zero commits has no HEAD, so `git worktree add … HEAD` fails — the first
+    story of a freshly created project would die at the worktree stage. Give it an empty root
+    commit (with an identity fallback for machines that never configured git)."""
+    if subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD"],
+                      cwd=str(ROOT), capture_output=True, text=True).returncode == 0:
+        return
+    msg = ["commit", "--allow-empty", "-m", "fablize: initial commit"]
+    if subprocess.run(["git"] + msg, cwd=str(ROOT), capture_output=True, text=True).returncode != 0:
+        subprocess.run(["git", "-c", "user.name=fablize", "-c", "user.email=fablize@local"] + msg,
+                       cwd=str(ROOT), capture_output=True, text=True)
+
+
 def worktree_add(add):
     with _WORKTREE_LOCK:
+        ensure_head()  # serialize with the add: HEAD must exist before `worktree add … HEAD`
         r = subprocess.run(add, cwd=str(ROOT), capture_output=True, text=True)
         if r.returncode != 0 and re.search(r"index\.lock|unable to lock|\.lock", r.stderr or ""):
             time.sleep(0.5)  # one retry after a short backoff — lock contention is transient

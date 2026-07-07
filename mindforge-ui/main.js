@@ -16,6 +16,20 @@ const BIN = path.join(INSTALL, "build", "c", "codebase-memory-mcp");
 const SHOT = process.argv.includes("--shot");
 const { okProjectName, createProjectAt } = require("./projectcore");
 
+// A GUI launched from Finder/Dock inherits a truncated PATH (often just /usr/bin:/bin), so
+// bare `python3` / `git` / `claude` / `node` fail to spawn. Append the usual install dirs once
+// (append, not prepend — never override the user's own ordering) so the engines resolve.
+function hardenPath() {
+  if (process.platform === "win32") return;
+  const home = os.homedir();
+  const extra = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
+    path.join(home, ".local", "bin"), path.join(home, ".npm-global", "bin"), "/opt/local/bin"];
+  const seen = new Set((process.env.PATH || "").split(path.delimiter));
+  const add = extra.filter((d) => d && !seen.has(d));
+  if (add.length) process.env.PATH = [process.env.PATH, ...add].filter(Boolean).join(path.delimiter);
+}
+hardenPath();
+
 let projectDir = INSTALL;                                   // current project (see app.whenReady)
 const repo = () => projectDir;
 const fablize = () => path.join(projectDir, ".fablize");

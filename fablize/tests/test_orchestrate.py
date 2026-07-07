@@ -181,6 +181,36 @@ class OrchestrateTests(Base):
         status = self.tool(GOALS, "status")
         self.assertIn("[pending]", status.stdout)
 
+    def test_allowlist_covers_common_stacks(self):
+        # an arbitrary project's test runner must be allowed, or the agent can't self-verify
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("orch_allow", ORCH)
+        orch = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(orch)
+        for entry in ("Bash(pnpm:*)", "Bash(poetry run:*)", "Bash(deno test:*)",
+                      "Bash(dotnet test:*)", "Bash(gradle:*)", "Bash(bundle exec:*)"):
+            self.assertIn(entry, orch.AGENT_ALLOW)
+        self.assertNotIn("Bash(git push:*)", orch.AGENT_ALLOW)  # still no push/network escape
+
+    @unittest.skipUnless(HAS_GIT, "git not available")
+    def test_unborn_head_gets_initial_commit(self):
+        # a repo with zero commits must still run story 1: ensure_head makes the root commit
+        # so `git worktree add … HEAD` resolves (the freshly-created-project case).
+        subprocess.run(["git", "init", "-q"], cwd=str(self.repo), env=self.env, capture_output=True)
+        self.make_plan()
+        stub = self.tmp / "stub-unborn"
+        stub.write_text("#!/bin/sh\necho agent-done\n", encoding="utf-8")
+        stub.chmod(0o755)
+        genv = dict(self.env, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                    GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+        r = self.tool(ORCH, "run", "--ids", "G001", "--claude-cmd", str(stub), env=genv)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        head = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=str(self.repo),
+                              env=self.env, capture_output=True, text=True)
+        self.assertEqual(head.returncode, 0, "ensure_head should have created a commit")
+        self.assertIn("agent-done",
+                      (self.repo / ".fablize" / "orchestrator" / "G001.log").read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

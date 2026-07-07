@@ -137,9 +137,28 @@ def review(story_id: str) -> str:
     return str(crew.kickoff())
 
 
+def autodetect_verify() -> str:
+    """Guess a sensible gate for an ARBITRARY project from its manifest — so the crew can
+    drive a repo that has no fablize/tests. Empty string means "no gate detected"."""
+    root = mt.REPO
+    try:
+        if (root / "package.json").exists():
+            pkg = json.loads((root / "package.json").read_text(encoding="utf-8"))
+            if "test" in (pkg.get("scripts") or {}):
+                return "npm test --silent"
+    except (OSError, ValueError):
+        pass
+    for probe, cmd in (("pyproject.toml", "python3 -m pytest -q"), ("pytest.ini", "python3 -m pytest -q"),
+                       ("go.mod", "go test ./..."), ("Cargo.toml", "cargo test"), ("Makefile", "make test")):
+        if (root / probe).exists():
+            return cmd
+    return ""
+
+
 def verify_cmd() -> str:
-    """Gate command resolution: MINDFORGE_VERIFY_CMD env override → a verify_cmd recorded
-    on a plan story (last one wins — the final story owns the gate) → the suite default."""
+    """Gate command resolution, best-first: MINDFORGE_VERIFY_CMD env → a verify_cmd recorded
+    on a plan story (last wins — the final story owns the gate) → this repo's own suite if it
+    exists → autodetect from the project manifest → "" (review-only, no runnable gate)."""
     env = os.environ.get("MINDFORGE_VERIFY_CMD")
     if env:
         return env
@@ -150,7 +169,9 @@ def verify_cmd() -> str:
                 return g["verify_cmd"]
     except (OSError, ValueError):
         pass
-    return DEFAULT_VERIFY
+    if (mt.REPO / "fablize" / "tests").is_dir():
+        return DEFAULT_VERIFY
+    return autodetect_verify()
 
 
 def cycle(dry_run: bool = False) -> None:
@@ -183,10 +204,13 @@ def cycle(dry_run: bool = False) -> None:
             continue
         if "VERDICT: COMPLETE" in verdict:
             vcmd = verify_cmd()
-            gate = mt.run_verification(vcmd)
-            tail = gate.splitlines()[-1] if gate else ""
+            if vcmd:
+                gate = mt.run_verification(vcmd)
+                tail = gate.splitlines()[-1] if gate else ""
+            else:  # no runnable gate detected → honest review-only, recorded as such
+                tail = "review-only (no verify gate detected)"
             mt.goals_checkpoint(sid, "complete", verdict[:200],
-                                verify_cmd=vcmd, verify_evidence=tail)
+                                verify_cmd=vcmd or "(review-only)", verify_evidence=tail)
             print(mt.merge_story(sid))
             results.append((sid, "merged"))
         else:
