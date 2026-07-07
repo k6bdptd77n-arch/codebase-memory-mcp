@@ -17,10 +17,11 @@
       <span class="proj-ico">▣</span><span class="proj-name">…</span><span class="proj-caret">▾</span>
     </button>
     <div id="proj-menu" class="proj-menu hidden"></div>
-    <div class="mode-seg" title="АВТО: когда агент заканчивает, claude-ревьюер смотрит диф, и при зелёных тестах стори мержится сама">
+    <div class="mode-seg" title="Шкала доверия: Ручной — merge только вами; Ревью — LLM обязательно смотрит диф, merge всё равно вручную; Авто — merge сам при зелёных тестах">
       <input type="checkbox" id="autopilot" class="hidden" />
-      <button id="mode-manual" class="on">Ручной</button>
-      <button id="mode-auto">Авто</button>
+      <button id="mode-manual" class="on" data-mode="manual">Ручной</button>
+      <button id="mode-review" data-mode="review">Ревью</button>
+      <button id="mode-auto" data-mode="auto">Авто</button>
     </div>
   </div>
 

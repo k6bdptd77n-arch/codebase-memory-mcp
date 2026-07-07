@@ -115,6 +115,30 @@ class ReviewToolTests(Base):
         self.assertIn("42", out)
 
 
+class ReceiptToolTests(Base):
+    def test_write_receipt_creates_valid_json_and_md(self):
+        path = self.t.write_receipt("G001", verdict="VERDICT: COMPLETE — looks fine",
+                                    evidence="=== diff --stat:\n 1 file changed",
+                                    verify_cmd="pytest -q", verify_evidence="3 passed", mode="auto-on-green")
+        import json as _json
+        self.assertTrue(path.endswith("G001.md"))
+        jf = self.repo / ".fablize" / "receipts" / "G001.json"
+        self.assertTrue(jf.exists())
+        rec = _json.loads(jf.read_text(encoding="utf-8"))
+        self.assertEqual(rec["id"], "G001")
+        self.assertEqual(rec["mode"], "auto-on-green")
+        self.assertIn("COMPLETE", rec["verdict"])
+        self.assertEqual(rec["verify_cmd"], "pytest -q")
+        md = (self.repo / ".fablize" / "receipts" / "G001.md").read_text(encoding="utf-8")
+        self.assertIn("pytest -q", md)
+        self.assertIn("looks fine", md)
+
+    def test_write_receipt_survives_missing_optional_fields(self):
+        # review-only path: no verify_cmd/verify_evidence
+        path = self.t.write_receipt("G002", verdict="VERDICT: COMPLETE", evidence="ev", mode="manual")
+        self.assertTrue(Path(path).exists())
+
+
 class MergeToolTests(Base):
     def _git(self, *args, env=None):
         return subprocess.run(["git", *args], cwd=self.repo, env=env or self.genv,

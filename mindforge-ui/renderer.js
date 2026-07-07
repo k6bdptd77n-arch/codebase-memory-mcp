@@ -146,21 +146,32 @@ window.mf.onProjectChanged(() => {
 });
 refreshProject();
 
-// ── режим Ручной|Авто (титлбар) — тот же скрытый чекбокс #autopilot ─────────
-const ap = document.getElementById("autopilot");
-ap.checked = localStorage.getItem("mf-autopilot") === "1";
-const modeBtns = { manual: document.getElementById("mode-manual"), auto: document.getElementById("mode-auto") };
+// ── шкала доверия: Ручной / Ревью / Авто (титлбар) ──────────────────────────
+// Ручной — merge только рукой, никакого автоматического ревью. Ревью — LLM-ревью
+// запускается ОБЯЗАТЕЛЬНО при выходе агента (ничего не скрыто), но merge всё равно
+// только рукой. Авто — то же ревью, и при вердикте COMPLETE merge происходит сам
+// (сам gate внутри storyApprove всё равно проверяет тесты — режим не обходит гейт).
+const MODES = ["manual", "review", "auto"];
+const ap = document.getElementById("autopilot");                 // сохранён для обратной совместимости чтения board.js
+const modeBtns = { manual: document.getElementById("mode-manual"),
+                   review: document.getElementById("mode-review"),
+                   auto: document.getElementById("mode-auto") };
+let mfMode = (() => {
+  const saved = localStorage.getItem("mf-mode");
+  if (MODES.includes(saved)) return saved;
+  return localStorage.getItem("mf-autopilot") === "1" ? "auto" : "manual";  // миграция со старого булева ключа
+})();
+window.mfMode = () => mfMode;
 function paintMode() {
-  modeBtns.manual.classList.toggle("on", !ap.checked);
-  modeBtns.auto.classList.toggle("on", ap.checked);
+  for (const m of MODES) modeBtns[m].classList.toggle("on", m === mfMode);
+  ap.checked = mfMode === "auto";                                 // board.js читает это как "полный автопилот"
 }
-function setMode(auto) {
-  ap.checked = auto;
-  localStorage.setItem("mf-autopilot", auto ? "1" : "0");
+function setMode(mode) {
+  mfMode = MODES.includes(mode) ? mode : "manual";
+  localStorage.setItem("mf-mode", mfMode);
   paintMode();
 }
-modeBtns.manual.addEventListener("click", () => setMode(false));
-modeBtns.auto.addEventListener("click", () => setMode(true));
+for (const m of MODES) modeBtns[m].addEventListener("click", () => setMode(m));
 paintMode();
 
 // ── ESC закрывает верхний слой: палитру, модалку, drawer, меню проекта ──────
@@ -193,7 +204,9 @@ function buildActions(stories) {
     { label: "Открыть папку…", k: "проект", run: () => window.mf.projectOpen() },
     { label: "Новый проект…", k: "проект", run: () => showProjModal() },
     { label: "Открыть 3D-граф", k: "действие", run: () => window.mf.openGraph() },
-    { label: ap.checked ? "Режим → Ручной" : "Режим → Авто", k: "режим", run: () => setMode(!ap.checked) },
+    ...MODES.filter((m) => m !== mfMode).map((m) => ({
+      label: `Режим → ${{ manual: "Ручной", review: "Ревью", auto: "Авто" }[m]}`,
+      k: "режим", run: () => setMode(m) })),
   ];
   for (const g of stories)
     if (g && g.status !== "complete")

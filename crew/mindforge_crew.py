@@ -122,9 +122,12 @@ def plan(feature: str) -> str:
     return str(crew.kickoff())
 
 
-def review(story_id: str) -> str:
+def review(story_id: str, evidence: str | None = None) -> str:
     _, Crew, Task, _ = _crewai()
-    evidence = mt.review_story(story_id)
+    # evidence may be pre-fetched by the caller (cycle() reuses it for the merge receipt)
+    # so the diff/log aren't computed twice for the same story.
+    if evidence is None:
+        evidence = mt.review_story(story_id)
     agent = reviewer_agent()  # ONE instance — Task and Crew must reference the same object
     crew = Crew(agents=[agent], tasks=[Task(
         description=(
@@ -192,6 +195,24 @@ def over_budget() -> bool:
         return False
 
 
+def crew_mode() -> str:
+    """The trust dial: 'manual' | 'review-required' | 'auto-on-green' (default — preserves
+    the crew's original always-merge-on-COMPLETE behavior). Only 'auto-on-green' lets cycle()
+    merge automatically; the other two always leave a reviewed story for a human to merge —
+    same distinction the GUI's mode-seg makes, read from the project's own crew.json."""
+    env = os.environ.get("MINDFORGE_MODE")
+    if env in ("manual", "review-required", "auto-on-green"):
+        return env
+    try:
+        cfg = json.loads((mt.REPO / ".fablize" / "crew.json").read_text(encoding="utf-8"))
+        m = cfg.get("mode")
+        if m in ("manual", "review-required", "auto-on-green"):
+            return m
+    except (OSError, ValueError):
+        pass
+    return "auto-on-green"
+
+
 def cycle(dry_run: bool = False) -> None:
     """run → review → checkpoint/merge for every pending story; reflect at the end."""
     status = mt.goals_status()
@@ -210,7 +231,8 @@ def cycle(dry_run: bool = False) -> None:
             print(f"[dry-run] would run_story({sid}), review, checkpoint, merge")
             continue
         print(mt.run_story(sid))
-        verdict = review(sid)
+        evidence = mt.review_story(sid)          # fetched once, reused for review() and the receipt
+        verdict = review(sid, evidence=evidence)
         print(verdict)
         # Guard: goals_next activates the FIRST pending/in_progress story, which is only sid
         # if the plan hasn't drifted (another driver, a stuck story). Checkpointing a story
@@ -224,6 +246,14 @@ def cycle(dry_run: bool = False) -> None:
             results.append((sid, "skipped"))
             continue
         if "VERDICT: COMPLETE" in verdict:
+            mode = crew_mode()
+            if mode != "auto-on-green":
+                # Trust dial says merge is a human's call — the story stays reviewed-but-
+                # pending (branch + worktree intact) instead of merging on the crew's say-so.
+                print(f"cycle: mode={mode} — {sid} passed review but merge is manual "
+                      f"(open it in MindForge Control, or goals.py checkpoint + git merge by hand).")
+                results.append((sid, "awaiting-manual-merge"))
+                continue
             vcmd = verify_cmd()
             if vcmd:
                 gate = mt.run_verification(vcmd)
@@ -233,6 +263,8 @@ def cycle(dry_run: bool = False) -> None:
             mt.goals_checkpoint(sid, "complete", verdict[:200],
                                 verify_cmd=vcmd or "(review-only)", verify_evidence=tail)
             print(mt.merge_story(sid))
+            mt.write_receipt(sid, verdict=verdict, evidence=evidence,
+                             verify_cmd=vcmd or "(review-only)", verify_evidence=tail, mode=mode)
             results.append((sid, "merged"))
         else:
             print(mt.goals_checkpoint(sid, "failed", verdict[:200]))

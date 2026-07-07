@@ -27,7 +27,7 @@ contextBridge.exposeInMainWorld("mf", {
   // story lifecycle
   storyRun: (id) => ipcRenderer.invoke("story-run", id),
   storyStop: (id) => ipcRenderer.invoke("story-stop", id),
-  storyApprove: (id, evidence) => ipcRenderer.invoke("story-approve", { id, evidence }),
+  storyApprove: (id, evidence, mode) => ipcRenderer.invoke("story-approve", { id, evidence, mode }),
   storyFail: (id, reason) => ipcRenderer.invoke("story-fail", { id, reason }),
   storyRetry: (id) => ipcRenderer.invoke("story-retry", id),
   reviewLLM: (id) => ipcRenderer.invoke("review-llm", id),

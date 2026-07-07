@@ -225,7 +225,8 @@ window.Views.board = (() => {
     if (!(await window.mf.confirm(`Слить ${id}`,
       "Прогонит весь тестовый набор (gate), закроет стори, сольёт ветку и уберёт worktree."))) return;
     progress(`▸ gate: гоняю тестовый набор…`);
-    const r = await window.mf.storyApprove(id, `принято в MindForge Control`);
+    const mode = window.mfMode ? window.mfMode() : "manual";
+    const r = await window.mf.storyApprove(id, `принято в MindForge Control`, mode);
     for (const s of r.steps) progress(`${s.ok ? "✓" : "✗"} ${s.name}\n${s.out}`, s.ok);
     if (r.ok) { progress(`✓ ${id} слито — ${r.testsTail}`, true); setTimeout(closeReview, 1200); }
     refresh();
@@ -246,14 +247,26 @@ window.Views.board = (() => {
     p.appendChild(div); p.scrollTop = p.scrollHeight;
   }
 
-  // autopilot: agent exited → LLM review → approve/fail automatically
+  // Шкала доверия: agent exited → поведение зависит от режима (window.mfMode()).
+  //   manual — ничего не делаем, человек проверяет и мержит сам через drawer.
+  //   review — LLM-ревью запускается ОБЯЗАТЕЛЬНО (вердикт виден в статусбаре), но
+  //            merge/fail всё равно требует ручного клика — доверие ещё не заработано.
+  //   auto   — то же ревью, и при COMPLETE merge происходит сам (storyApprove сам
+  //            гоняет verify-гейт заново — режим никогда не обходит проверку).
   async function onExit(id) {
-    if (!document.getElementById("autopilot").checked) { refresh(); return; }
-    note(`автопилот: проверяю ${id}…`);
+    const mode = window.mfMode ? window.mfMode() : "manual";
+    if (mode === "manual") { refresh(); return; }
+    const label = mode === "auto" ? "автопилот" : "ревью";
+    note(`${label}: проверяю ${id}…`);
     const r = await window.mf.reviewLLM(id);
-    note(`автопилот ${id}: ${r.verdict}`);
+    if (mode !== "auto") {                                        // review: только уведомление, merge рукой
+      note(`ревью ${id}: ${r.verdict} — откройте «Проверить», чтобы слить`);
+      refresh();
+      return;
+    }
+    note(`${label} ${id}: ${r.verdict}`);
     if (r.verdict === "COMPLETE" && id === firstOpenId()) {
-      const ap = await window.mf.storyApprove(id, "автопилот: " + r.text.slice(0, 160));
+      const ap = await window.mf.storyApprove(id, "автопилот: " + r.text.slice(0, 160), "auto");
       note(ap.ok ? `автопилот: ${id} слито ✓` : `автопилот: ${id} не прошло gate — оставлено на ручную проверку`);
     } else if (r.verdict === "FAILED") {
       await window.mf.storyFail(id, "автопилот: " + r.text.slice(0, 160));

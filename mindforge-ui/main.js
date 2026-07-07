@@ -476,8 +476,26 @@ async function reviewLLM(id) {
   return { verdict, text: r.out.trim() };
 }
 
+// The receipt is the artifact a human can point to as proof a merge wasn't just an agent's
+// claim — mirrors crew/mindforge_tools.py write_receipt() so either path (GUI or crew) leaves
+// the same shape in .fablize/receipts/. Kept a tiny local writer (no python shell-out needed).
+function writeReceipt(id, { verdict, evidence, verifyCmd, verifyEvidence, mode }) {
+  try {
+    const d = path.join(fablize(), "receipts");
+    fs.mkdirSync(d, { recursive: true });
+    const ts = new Date().toISOString();
+    const rec = { id, merged_at: ts, mode, verdict: (verdict || "").trim(),
+      verify_cmd: verifyCmd || "", verify_evidence: verifyEvidence || "", evidence: evidence || "" };
+    fs.writeFileSync(path.join(d, `${id}.json`), JSON.stringify(rec, null, 1) + "\n");
+    const md = `# Receipt — ${id}\n\n- Merged: ${ts}\n- Mode: ${mode}\n\n` +
+      `## Verdict\n${rec.verdict}\n\n## Verify gate\n\`${rec.verify_cmd || "(none — review-only)"}\`\n${rec.verify_evidence}\n\n` +
+      `## Evidence\n\`\`\`\n${rec.evidence}\n\`\`\`\n`;
+    fs.writeFileSync(path.join(d, `${id}.md`), md);
+  } catch {}  // a receipt-write failure must never block the merge that already happened
+}
+
 // --- story lifecycle actions ---------------------------------------------------
-async function storyApprove(_e, { id, evidence }) {
+async function storyApprove(_e, { id, evidence, mode }) {
   const steps = [];
   const step = (name, r) => { steps.push({ name, ok: r.ok, out: (r.out + "\n" + (r.err || "")).trim().slice(-1200) }); return r.ok; };
   if (!okId(id)) return { ok: false, steps: [{ name: "validate id", ok: false, out: "некорректный id стори" }] };
@@ -496,14 +514,19 @@ async function storyApprove(_e, { id, evidence }) {
     step("verification gate", { ok: true, out: "fablize/tests не найден в проекте — авто-gate пропущен, приёмка по ревью", err: "" });
   }
   await engine("goals.py", ["next"]);
+  const vcmd = hasSuite ? "python3 -m pytest fablize/tests/ -q" : "manual review in MindForge Control";
+  const vevid = hasSuite ? tail : "diff+log reviewed and approved in the GUI";
   const ck = ["checkpoint", "--id", id, "--status", "complete", "--evidence", evidence || "approved in MindForge Control"];
-  if (isFinal) ck.push(
-    "--verify-cmd", hasSuite ? "python3 -m pytest fablize/tests/ -q" : "manual review in MindForge Control",
-    "--verify-evidence", hasSuite ? tail : "diff+log reviewed and approved in the GUI");
+  if (isFinal) ck.push("--verify-cmd", vcmd, "--verify-evidence", vevid);
   if (!step("checkpoint", await engine("goals.py", ck))) return { ok: false, steps };
+  // evidence must be captured BEFORE the merge/branch-delete below — reviewEvidence needs
+  // the still-live branch to diff against.
+  const evidenceText = (await reviewEvidence(id)).text || "";
   if (!step("merge", await run("git", ["merge", "--no-edit", `fablize/${id}`]))) return { ok: false, steps };
   step("worktree remove", await run("git", ["worktree", "remove", "--force", path.join(fablize(), "worktrees", id)]));
   step("branch delete", await run("git", ["branch", "-d", `fablize/${id}`]));
+  writeReceipt(id, { verdict: evidence || "approved in MindForge Control", evidence: evidenceText,
+    verifyCmd: vcmd, verifyEvidence: vevid, mode: mode || "manual" });
   return { ok: true, steps, testsTail: tail };
 }
 

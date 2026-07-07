@@ -15,8 +15,11 @@ the failure text IS the signal the reviewer needs.
 """
 from __future__ import annotations
 
+import json
 import os
 import shlex
+import tempfile
+from datetime import datetime, timezone
 import subprocess
 import sys
 from pathlib import Path
@@ -142,6 +145,39 @@ def run_verification(cmd="python3 -m pytest fablize/tests/ -q", timeout=600):
     """The gate command — run the project's test suite in the MAIN checkout.
     cmd is shell-quoted text (shlex), so quoted args survive: `python3 -c "print(1)"`."""
     return _run(shlex.split(cmd), timeout=timeout)
+
+
+def _atomic_write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def write_receipt(story_id, *, verdict, evidence, verify_cmd="", verify_evidence="", mode="manual"):
+    """The artifact a human points to as proof a merge wasn't just an agent's claim: the
+    diff/log evidence, the exact gate command and its result, and the reviewer's verdict.
+    Written once per merged story to .fablize/receipts/<id>.{json,md}. Returns the .md path."""
+    d = REPO / ".fablize" / "receipts"
+    ts = datetime.now(timezone.utc).isoformat()
+    rec = {"id": story_id, "merged_at": ts, "mode": mode, "verdict": verdict.strip(),
+           "verify_cmd": verify_cmd, "verify_evidence": verify_evidence, "evidence": evidence}
+    _atomic_write(d / f"{story_id}.json", json.dumps(rec, ensure_ascii=False, indent=1))
+    md = (f"# Receipt — {story_id}\n\n- Merged: {ts}\n- Mode: {mode}\n\n"
+          f"## Verdict\n{verdict.strip()}\n\n"
+          f"## Verify gate\n`{verify_cmd or '(none — review-only)'}`\n{verify_evidence}\n\n"
+          f"## Evidence\n```\n{evidence}\n```\n")
+    out = d / f"{story_id}.md"
+    _atomic_write(out, md)
+    return str(out)
 
 
 # --- memory (the brain compounds across crews too) -----------------------------
