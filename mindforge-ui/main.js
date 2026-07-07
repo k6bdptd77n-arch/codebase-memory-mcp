@@ -181,6 +181,21 @@ async function layers() {
   };
 }
 
+// Index a project into the C memory engine so the Memory layer works for it — otherwise a
+// freshly-created/opened project shows "офлайн" forever. Fire-and-forget (indexing can take
+// a while); we don't block the UI, just nudge a refresh when it finishes. Deduped per dir so
+// a create-then-switch doesn't double-index.
+const _indexing = new Set();
+function indexProject(dir) {
+  if (!fs.existsSync(BIN) || _indexing.has(dir)) return;
+  _indexing.add(dir);
+  run(BIN, ["cli", "index_repository", JSON.stringify({ repo_path: dir, mode: "fast" })],
+      { timeout: 300000 })
+    .then(() => send("changed"))                             // refreshLayers picks up the new counts
+    .catch(() => {})
+    .finally(() => _indexing.delete(dir));
+}
+
 // --- crew: role config + MCP/skills inventories --------------------------------
 // The crew config is the GUI's own state file: ~/.fablize/crew.json (global default)
 // overridden by <repo>/.fablize/crew.json. A missing toggle means "enabled".
@@ -524,6 +539,7 @@ function switchProject(dir, persist = true) {
     p.last = projectDir;
     savePrefs(p);
   }
+  indexProject(projectDir);                                  // make the Memory layer real for it
   send("project-changed", projectInfo());
 }
 
@@ -547,6 +563,7 @@ function createWindow() {
   // state
   ipcMain.handle("snapshot", snapshot);
   ipcMain.handle("layers", layers);
+  ipcMain.handle("reindex", () => { indexProject(repo()); return { ok: fs.existsSync(BIN) }; });
   ipcMain.handle("brain-facts", () => brainFacts());
   ipcMain.handle("episodes", () => episodes());
   ipcMain.handle("metrics", async () => {

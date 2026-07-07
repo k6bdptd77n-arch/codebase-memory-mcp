@@ -56,6 +56,14 @@ async function refreshLayers() {
 // ── "Открыть 3D-граф" — statusbar action (URL is hardcoded in main) ──────────
 document.getElementById("open-graph").addEventListener("click", () => window.mf.openGraph());
 
+// ── "↻ индекс" — reindex the current project into the C memory engine ─────────
+document.getElementById("reindex").addEventListener("click", async () => {
+  const note = document.getElementById("tm-note");
+  const r = await window.mf.reindex();
+  note.textContent = r && r.ok ? "индексирую проект…" : "движок памяти не собран";
+  setTimeout(refreshLayers, 2500);
+});
+
 // ── project switcher (titlebar) ──────────────────────────────────────────────
 const projBtn = document.getElementById("proj-btn");
 const projMenu = document.getElementById("proj-menu");

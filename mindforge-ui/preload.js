@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("mf", {
   // state
   snapshot: () => ipcRenderer.invoke("snapshot"),
   layers: () => ipcRenderer.invoke("layers"),
+  reindex: () => ipcRenderer.invoke("reindex"),
   brainFacts: () => ipcRenderer.invoke("brain-facts"),
   episodes: () => ipcRenderer.invoke("episodes"),
   metrics: () => ipcRenderer.invoke("metrics"),
