@@ -44,8 +44,10 @@ reference/
 # Local-only scratch / session notes (never pushed)
 private/
 
-# Build artifacts
-build/
+# Build artifacts (C engine output at repo root only — mindforge-ui/build/ is
+# electron-builder's buildResources SOURCE dir: entitlements.plist, notarize.js — tracked)
+/build/
+mindforge-ui/dist/
 node_modules/
 graph-ui/dist/
 

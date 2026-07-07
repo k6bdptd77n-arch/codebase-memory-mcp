@@ -6,10 +6,11 @@ const os = require("os");
 const { execFile, spawn } = require("child_process");
 const pty = require("node-pty");
 
-// INSTALL is this repo — the fablize engines, the C memory engine and the
-// installer live HERE regardless of which project is open. The current project
-// is mutable state: every project-scoped lookup goes through repo()/fablize().
-const INSTALL = path.resolve(__dirname, "..");
+// INSTALL is where the fablize engines, the C memory engine and the installer live,
+// regardless of which project is open. In a packaged app these are bundled as
+// electron-builder extraResources (see package.json build.extraResources) under
+// process.resourcesPath; in dev they're just the repo root one level up from here.
+const INSTALL = app.isPackaged ? process.resourcesPath : path.resolve(__dirname, "..");
 const PY = "python3";
 const SCRIPTS = path.join(INSTALL, "fablize", "scripts");
 const BIN = path.join(INSTALL, "build", "c", "codebase-memory-mcp");
@@ -684,6 +685,15 @@ function createWindow() {
   ipcMain.handle("cli-available", async (_e, cmd) => {
     const r = await run("which", [String(cmd).split(" ")[0]], { timeout: 3000 });
     return r.ok;
+  });
+
+  // First-run / welcome check: instead of a silent spawn failure the first time a story
+  // is run, tell the user up front what's missing and exactly how to fix it.
+  ipcMain.handle("preflight", async () => {
+    const claude = (await run("which", ["claude"], { timeout: 3000 })).ok;
+    const engineBuilt = fs.existsSync(BIN);
+    const git = (await run("which", ["git"], { timeout: 3000 })).ok;
+    return { claude, engineBuilt, git, installDir: INSTALL, packaged: app.isPackaged };
   });
 
   // 3D-graph viewer — URL is hardcoded here; never openExternal a renderer-supplied URL

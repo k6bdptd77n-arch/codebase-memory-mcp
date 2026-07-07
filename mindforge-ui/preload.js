@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld("mf", {
   crewInventory: () => ipcRenderer.invoke("crew-inventory"),
   ollamaModels: () => ipcRenderer.invoke("ollama-models"),
   cliAvailable: (cmd) => ipcRenderer.invoke("cli-available", cmd),
+  preflight: () => ipcRenderer.invoke("preflight"),
 
   // 3D graph viewer (URL is hardcoded in main)
   openGraph: () => ipcRenderer.invoke("open-graph"),

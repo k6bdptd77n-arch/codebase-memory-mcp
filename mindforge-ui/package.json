@@ -32,13 +32,24 @@
       "views/**",
       "fonts/**"
     ],
+    "extraResources": [
+      { "from": "../fablize", "to": "fablize",
+        "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"] },
+      { "from": "../crew", "to": "crew",
+        "filter": ["**/*", "!.venv/**", "!**/__pycache__/**", "!**/*.pyc"] },
+      { "from": "../build/c/codebase-memory-mcp", "to": "build/c/codebase-memory-mcp" }
+    ],
     "mac": {
       "target": "dmg",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "linux": {
       "target": "AppImage",
       "category": "Development"
-    }
+    },
+    "afterSign": "build/notarize.js"
   }
 }

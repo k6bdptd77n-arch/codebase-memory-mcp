@@ -276,6 +276,23 @@ setInterval(() => {
     new Date().toLocaleTimeString("en-GB", { hour12: false });
 }, 1000);
 
+// ── preflight: tell the user what's missing up front, not as a silent spawn failure ──
+(async () => {
+  try {
+    const p = await window.mf.preflight();
+    const missing = [];
+    if (!p.claude) missing.push("claude CLI не найден в PATH — установите Claude Code и перезапустите MindForge");
+    if (!p.git) missing.push("git не найден в PATH");
+    if (!p.engineBuilt) missing.push("движок памяти не собран — запустите install-combined.sh (или scripts/build.sh)");
+    if (!missing.length) return;
+    const banner = document.getElementById("preflight-banner");
+    document.getElementById("preflight-text").textContent = "⚠ " + missing.join(" · ");
+    banner.classList.remove("hidden");
+    document.getElementById("preflight-dismiss").addEventListener("click",
+      () => banner.classList.add("hidden"), { once: true });
+  } catch {}
+})();
+
 // ── boot + live refresh ──────────────────────────────────────────────────────
 for (const v of Object.values(window.Views)) v.init();
 refreshLayers();
