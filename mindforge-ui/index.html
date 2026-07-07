@@ -212,6 +212,19 @@
     <span class="sb-item" id="tm-clock"></span>
   </footer>
 
+  <!-- verify-команды из fablize/packs/recipes — подсказки для мастера плана -->
+  <datalist id="verify-suggestions">
+    <option value="npm test"></option>
+    <option value="pnpm test"></option>
+    <option value="yarn test"></option>
+    <option value="python3 -m pytest -q"></option>
+    <option value="poetry run pytest -q"></option>
+    <option value="go test ./..."></option>
+    <option value="cargo test"></option>
+    <option value="deno test -A"></option>
+    <option value="make test"></option>
+  </datalist>
+
   <!-- command palette (⌘K): только существующие действия -->
   <div id="palette" class="palette hidden">
     <div class="palette-card">

@@ -66,7 +66,7 @@ window.Views.settings = (() => {
     // выбор CLI для Руки (codex/aider — если установлены)
     if (!role.think) {
       const seg = el.querySelector(".cli-seg");
-      for (const cli of ["claude", "codex", "aider"]) {
+      for (const cli of ["claude", "codex", "gemini", "opencode", "aider"]) {  // = orchestrate.py AGENT_STYLES
         const b = document.createElement("button");
         b.className = "seg" + ((rc.cli || "claude") === cli ? " on" : "");
         b.textContent = cli;

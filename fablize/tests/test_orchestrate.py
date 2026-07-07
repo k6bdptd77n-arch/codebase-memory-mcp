@@ -143,8 +143,14 @@ class OrchestrateTests(Base):
                          ["codex", "exec", "--full-auto", "task"])
         self.assertEqual(orch.agent_cmd("aider", "task", "acceptEdits", style="aider"),
                          ["aider", "--yes-always", "--message", "task"])
-        # claude stays the default shape
-        self.assertIn("--permission-mode", orch.agent_cmd("claude", "task", "acceptEdits"))
+        self.assertEqual(orch.agent_cmd("gemini", "task", "acceptEdits", style="gemini"),
+                         ["gemini", "-p", "task", "--yolo"])
+        self.assertEqual(orch.agent_cmd("opencode", "task", "acceptEdits", style="opencode"),
+                         ["opencode", "run", "task"])
+        # claude stays the default shape, with agent_args appended verbatim
+        claude = orch.agent_cmd("claude", "task", "acceptEdits", ["--model", "haiku"])
+        self.assertEqual(claude, ["claude", "-p", "task", "--permission-mode", "acceptEdits",
+                                  "--model", "haiku"])
 
     @unittest.skipUnless(HAS_GIT, "git not available")
     def test_end_to_end_with_stub_agent(self):

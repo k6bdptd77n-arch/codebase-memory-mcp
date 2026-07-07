@@ -305,7 +305,7 @@ window.Views.board = (() => {
         <button class="wz-del btn ghost small" title="убрать стори">✕</button>
       </div>
       <textarea class="wz-obj" rows="2" placeholder="задача: какие файлы можно трогать и что должно получиться" spellcheck="false"></textarea>
-      <input class="wz-verify" placeholder="команда проверки (например: npm test)" spellcheck="false" />`;
+      <input class="wz-verify" list="verify-suggestions" placeholder="команда проверки (например: npm test)" spellcheck="false" />`;
     row.querySelector(".wz-del").addEventListener("click", () => {
       if (document.querySelectorAll("#wiz-stories .wiz-story").length > 1) row.remove();
     });

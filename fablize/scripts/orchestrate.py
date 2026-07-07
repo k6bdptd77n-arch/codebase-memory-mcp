@@ -123,18 +123,24 @@ def build_prompt(plan, story):
     )
 
 
+# Bring-your-own-CLI: each style is a template of argv tokens around the prompt. {prompt} is
+# the handoff text, {mode} the permission mode (claude only). Adding a CLI is one row here — the
+# worktree isolation and the review/merge loop stay identical whichever hands you use.
+AGENT_STYLES = {
+    "claude":   ["-p", "{prompt}", "--permission-mode", "{mode}"],
+    "codex":    ["exec", "--full-auto", "{prompt}"],
+    "gemini":   ["-p", "{prompt}", "--yolo"],
+    "opencode": ["run", "{prompt}"],
+    "aider":    ["--yes-always", "--message", "{prompt}"],
+}
+
+
 def agent_cmd(claude_cmd, prompt, permission_mode, agent_args=(), style="claude"):
     """Build the headless agent command. agent_args are appended verbatim (e.g. --model /
-    --mcp-config from a crew role config). `style` adapts the invocation to other coding
-    CLIs — the worktree isolation and the review/merge loop stay identical:
-      claude → claude -p <prompt> --permission-mode <mode>
-      codex  → codex exec --full-auto <prompt>
-      aider  → aider --yes-always --message <prompt>"""
-    if style == "codex":
-        return [claude_cmd, "exec", "--full-auto", prompt, *agent_args]
-    if style == "aider":
-        return [claude_cmd, "--yes-always", "--message", prompt, *agent_args]
-    return [claude_cmd, "-p", prompt, "--permission-mode", permission_mode, *agent_args]
+    --mcp-config from a crew role config). `style` selects the CLI adapter from AGENT_STYLES."""
+    tmpl = AGENT_STYLES.get(style, AGENT_STYLES["claude"])
+    argv = [prompt if t == "{prompt}" else permission_mode if t == "{mode}" else t for t in tmpl]
+    return [claude_cmd, *argv, *agent_args]
 
 
 # The golden middle for headless agents: acceptEdits alone lets an agent edit files but not RUN
@@ -323,7 +329,7 @@ def main():
             s.add_argument("--claude-cmd", default="claude")
             s.add_argument("--permission-mode", default="acceptEdits")
             s.add_argument("--agent-arg", action="append", default=[])
-            s.add_argument("--agent-style", default="claude", choices=["claude", "codex", "aider"])
+            s.add_argument("--agent-style", default="claude", choices=list(AGENT_STYLES))
     a = p.parse_args()
     {"plan": cmd_plan, "run": cmd_run, "clean": cmd_clean}[a.cmd](a)
 
