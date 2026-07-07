@@ -15,7 +15,7 @@ const PY = "python3";
 const SCRIPTS = path.join(INSTALL, "fablize", "scripts");
 const BIN = path.join(INSTALL, "build", "c", "codebase-memory-mcp");
 const SHOT = process.argv.includes("--shot");
-const { okProjectName, createProjectAt } = require("./projectcore");
+const { okProjectName, createProjectAt, checkStoriesInProject } = require("./projectcore");
 
 // A GUI launched from Finder/Dock inherits a truncated PATH (often just /usr/bin:/bin), so
 // bare `python3` / `git` / `claude` / `node` fail to spawn. Append the usual install dirs once
@@ -428,8 +428,12 @@ const PLANNER_RULES =
   "You are the MindForge build planner. Decompose the feature into 1-4 stories for parallel " +
   "headless coding agents, each in its own git worktree. HARD RULES: each story objective MUST " +
   "name the exact files it may touch; file sets of different stories MUST be disjoint; each " +
-  "objective ends with the verification command. Reply with ONLY a JSON array of strings, each " +
-  "'title::objective' (title = short kebab-case). No prose, no markdown fence.";
+  "objective ends with the verification command. Stories may ONLY touch files INSIDE this " +
+  "project — never absolute paths like /Users/... or ~/...: the agents are sandboxed to the " +
+  "project and such a story is guaranteed to fail. If the request is about something outside " +
+  "the project's files (OS tasks, other folders), reply with an empty JSON array [] and nothing " +
+  "else. Otherwise reply with ONLY a JSON array of strings, each 'title::objective' (title = " +
+  "short kebab-case). No prose, no markdown fence.";
 
 async function planGenerate(feature) {
   const recall = await engine("brain.py", ["recall", "--query", feature], { timeout: 20000 });
@@ -672,6 +676,11 @@ function createWindow() {
   // planner
   ipcMain.handle("plan-generate", (_e, feature) => planGenerate(feature));
   ipcMain.handle("plan-accept", async (_e, { brief, stories, mode }) => {
+    // ловим «чужие» пути на этапе плана, а не после провала агента в песочнице
+    const outside = checkStoriesInProject(stories, repo());
+    if (outside) return { ok: false, err: `Задача выходит за пределы проекта (${outside}). ` +
+      "Стори работают только с файлами этого проекта. Для разовых действий на компьютере " +
+      "откройте вкладку «Терминал» — там обычный claude без ограничений доски." };
     const args = mode === "add" ? ["add"] : ["create", "--force", "--brief", brief];
     for (const s of stories) args.push("--goal", s);
     return engine("goals.py", args);

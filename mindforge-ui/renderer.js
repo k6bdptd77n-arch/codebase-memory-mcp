@@ -181,9 +181,33 @@ document.addEventListener("keydown", (e) => {
   if (!palette.classList.contains("hidden")) { palette.classList.add("hidden"); return; }
   const modal = document.getElementById("proj-modal");
   if (!modal.classList.contains("hidden")) { modal.classList.add("hidden"); return; }
+  if (!quickModal.classList.contains("hidden")) { hideQuick(); return; }
   const drawer = document.getElementById("drawer");
   if (!drawer.classList.contains("hidden")) { document.getElementById("drawer-close").click(); return; }
   document.getElementById("proj-menu").classList.add("hidden");
+});
+
+// ── быстрая задача: одно поручение → интерактивный claude в PTY проекта ──────
+// Средний режим между церемонией доски и голым терминалом: без плана и ревью,
+// но в папке проекта и с его дисциплинами (AGENTS.md агент подхватывает сам).
+const quickModal = document.getElementById("quick-modal");
+const quickInput = document.getElementById("quick-input");
+function showQuick() { quickInput.value = ""; quickModal.classList.remove("hidden"); quickInput.focus(); }
+function hideQuick() { quickModal.classList.add("hidden"); }
+function quickGo() {
+  const text = quickInput.value.trim();
+  if (!text) return;
+  hideQuick();
+  document.querySelector('.tab[data-tab="terminal"]').click();
+  const escaped = text.replace(/'/g, "'\\''");   // безопасно для одинарных кавычек шелла
+  setTimeout(() => window.mf.ptyInput(`claude '${escaped}'\n`), 120);
+}
+document.getElementById("quick-btn").addEventListener("click", showQuick);
+document.getElementById("quick-go").addEventListener("click", quickGo);
+document.getElementById("quick-cancel").addEventListener("click", hideQuick);
+quickModal.addEventListener("click", (e) => { if (e.target === quickModal) hideQuick(); });
+quickInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); quickGo(); }
 });
 
 // ── command palette (⌘K / Ctrl+K) — только уже существующие действия ─────────
@@ -204,6 +228,7 @@ function buildActions(stories) {
     { label: "Открыть папку…", k: "проект", run: () => window.mf.projectOpen() },
     { label: "Новый проект…", k: "проект", run: () => showProjModal() },
     { label: "Открыть 3D-граф", k: "действие", run: () => window.mf.openGraph() },
+    { label: "Быстрая задача…", k: "действие", run: () => showQuick() },
     ...MODES.filter((m) => m !== mfMode).map((m) => ({
       label: `Режим → ${{ manual: "Ручной", review: "Ревью", auto: "Авто" }[m]}`,
       k: "режим", run: () => setMode(m) })),

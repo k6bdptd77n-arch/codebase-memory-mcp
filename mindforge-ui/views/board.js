@@ -11,14 +11,14 @@ window.Views.board = (() => {
   let openLaneLogs = new Set();          // story ids with visible live log
 
   const STATE_LABEL = {
-    pending: "ожидание", running: "в работе", review: "на ревью",
-    complete: "слито", failed: "провал", blocked: "заблокировано", in_progress: "активна",
+    pending: "ожидание", running: "в работе", review: "на проверке",
+    complete: "принято", failed: "не удалась", blocked: "заблокировано", in_progress: "активна",
   };
 
   // «взлётка»: план → код → verify → ревью → merge(gate). Честная проекция
   // доступного состояния; гейт зеленеет ТОЛЬКО на complete.
   function phaseRail(st, hasBranch) {
-    const seg = ["план", "код", "verify", "ревью", "merge"];
+    const seg = ["план", "код", "проверка", "ревью", "в проект"];
     const fill = { pending: 1, in_progress: 2, running: 1, review: 4,
       complete: 5, failed: hasBranch ? 4 : 2 }[st] ?? 1;
     let h = '<div class="phase-rail">';
@@ -40,6 +40,13 @@ window.Views.board = (() => {
     if (g.status === "failed" || g.status === "blocked") return "failed";
     if (rt.branch) return "review";
     return g.status === "in_progress" ? "in_progress" : "pending";
+  }
+
+  // последняя содержательная строка-вопрос из лога агента (провал «агент спрашивает»)
+  function extractQuestion(t) {
+    const lines = String(t || "").split("\n").map((s) => s.trim()).filter(Boolean);
+    const qs = lines.filter((l) => /\?\s*$/.test(l) && l.length > 12);
+    return qs.length ? qs[qs.length - 1].slice(0, 220) : "";
   }
 
   function firstOpenId() {
@@ -64,7 +71,7 @@ window.Views.board = (() => {
     wizard.classList.add("hidden");
     const gs = snap.goals.goals;
     const done = gs.filter((g) => g.status === "complete").length;
-    brief.innerHTML = `${esc(snap.goals.brief)}<small>слито ${done}/${gs.length}</small>`;
+    brief.innerHTML = `${esc(snap.goals.brief)}<small>принято ${done}/${gs.length}</small>`;
     guide();
     box.innerHTML = "";
     const gate = firstOpenId();
@@ -86,6 +93,7 @@ window.Views.board = (() => {
         <div class="lane-obj" title="${esc(g.objective)}">${esc(g.objective)}</div>
         ${phaseRail(st, !!rt.branch)}
         ${g.attempts >= 2 ? `<div class="escalation">⚠ эскалация — ${g.attempts} провала подряд; нужна модель сильнее или человек</div>` : ""}
+        <div class="lane-question hidden"></div>
         <div class="lane-log hidden"></div>
         <div class="lane-actions"></div>`;
       // строка кликабельна целиком → полный текст и доказательства в drawer
@@ -107,10 +115,21 @@ window.Views.board = (() => {
       if (st === "running") { btn("Остановить", "red", () => stopStory(g.id)); showLog(el, g.id); }
       if (st === "review") {
         btn("Проверить", "teal", () => openReview(g.id),
-            g.id !== gate, g.id !== gate ? "очередь на merge: сначала более ранние стори" : "");
+            g.id !== gate, g.id !== gate ? "по порядку: сначала примите более ранние стори" : "");
         btn("Лог", "ghost", () => toggleLog(el, g.id));
       }
-      if (st === "failed") btn("Повторить", "ghost", () => window.mf.storyRetry(g.id).then(refresh));
+      if (st === "failed") {
+        btn("Повторить", "ghost", () => window.mf.storyRetry(g.id).then(refresh));
+        // если агент упёрся и задал вопрос — он не должен тонуть в логе провала
+        window.mf.logTail(g.id).then((t) => {
+          const q = extractQuestion(t);
+          const box = el.querySelector(".lane-question");
+          if (q && box && el.isConnected) {
+            box.textContent = "Агент спрашивает: " + q;
+            box.classList.remove("hidden");
+          }
+        }).catch(() => {});
+      }
       if (st === "complete" && g.evidence) {
         const ev = document.createElement("span");
         ev.className = "lane-evidence"; ev.title = g.evidence; ev.textContent = "✓ " + g.evidence;
@@ -119,7 +138,9 @@ window.Views.board = (() => {
       return el;
     };
 
-    // сначала — что происходит СЕЙЧАС; смерженные сворачиваются в архивную группу
+    syncDrawer();  // открытая панель ревью обязана отражать СВЕЖИЙ статус, не момент открытия
+
+    // сначала — что происходит СЕЙЧАС; принятые сворачиваются в архивную группу
     const active = gs.filter((g) => laneState(g) !== "complete");
     const merged = gs.filter((g) => laneState(g) === "complete");
     for (const g of active) box.appendChild(laneEl(g));
@@ -128,7 +149,7 @@ window.Views.board = (() => {
       grp.className = "merged-group" + (mergedOpen ? " open" : "");
       const head = document.createElement("button");
       head.className = "merged-head";
-      head.innerHTML = `<span class="chev">▶</span> Смержено (${merged.length})`;
+      head.innerHTML = `<span class="chev">▶</span> Принято в проект (${merged.length})`;
       head.addEventListener("click", () => { mergedOpen = !mergedOpen; grp.classList.toggle("open", mergedOpen); });
       const body = document.createElement("div");
       body.className = "merged-body";
@@ -144,7 +165,7 @@ window.Views.board = (() => {
     refresh();
   }
   async function stopStory(id) {
-    if (await window.mf.confirm("Остановить агента", `Прервать работающего агента ${id}? Его worktree останется для разбора.`))
+    if (await window.mf.confirm("Остановить агента", `Прервать работающего агента ${id}? Его черновик работы сохранится — можно будет посмотреть, что он успел.`))
       { await window.mf.storyStop(id); refresh(); }
   }
 
@@ -170,6 +191,22 @@ window.Views.board = (() => {
 
   // review drawer
   let drawerId = null;
+  // Живая синхронизация: статус стори может измениться, пока панель открыта (автопилот
+  // провалил, другой процесс принял) — кнопки обязаны гаснуть, а не вести в тупик.
+  function syncDrawer() {
+    if (!drawerId || !snap || !snap.goals) return;
+    const g = snap.goals.goals.find((x) => x && x.id === drawerId);
+    if (!g) return;
+    const st = laneState(g);
+    const reviewable = st === "review" && drawerId === firstOpenId();
+    document.getElementById("drawer-approve").disabled = !reviewable;
+    document.getElementById("drawer-fail").disabled = st !== "review";
+    document.getElementById("drawer-state").textContent =
+      st === "failed" ? "Стори помечена неудачной — принять нельзя. Вернитесь на доску и нажмите «Повторить», либо переформулируйте задачу."
+      : st === "complete" ? "Работа уже принята в проект — действий не требуется."
+      : st === "running" ? "Агент ещё работает — дождитесь завершения."
+      : "";
+  }
   function renderPatch(body, ev) {
     // the actual patch, so approving is never blind: monospace block, +/- coloring
     const head = document.createElement("div");
@@ -211,6 +248,7 @@ window.Views.board = (() => {
     load.textContent = "собираю доказательства…";
     body.appendChild(load);
     d.classList.remove("hidden");
+    syncDrawer();
     try {
       const ev = await window.mf.reviewEvidence(id);
       load.textContent = ev.text;
@@ -222,19 +260,19 @@ window.Views.board = (() => {
   async function approve() {
     if (!drawerId) return;
     const id = drawerId;
-    if (!(await window.mf.confirm(`Слить ${id}`,
-      "Прогонит весь тестовый набор (gate), закроет стори, сольёт ветку и уберёт worktree."))) return;
-    progress(`▸ gate: гоняю тестовый набор…`);
+    if (!(await window.mf.confirm(`Принять работу ${id}`,
+      "Проверю тестами проекта — и на зелёных работа войдёт в проект, а черновик будет убран. Красные тесты ничего не изменят."))) return;
+    progress(`▸ проверяю тестами…`);
     const mode = window.mfMode ? window.mfMode() : "manual";
     const r = await window.mf.storyApprove(id, `принято в MindForge Control`, mode);
     for (const s of r.steps) progress(`${s.ok ? "✓" : "✗"} ${s.name}\n${s.out}`, s.ok);
-    if (r.ok) { progress(`✓ ${id} слито — ${r.testsTail}`, true); setTimeout(closeReview, 1200); }
+    if (r.ok) { progress(`✓ ${id} принято в проект — ${r.testsTail}`, true); setTimeout(closeReview, 1200); }
     refresh();
   }
   async function fail() {
     if (!drawerId) return;
     const id = drawerId;
-    if (!(await window.mf.confirm(`Провалить ${id}`, "Пометит стори проваленной; ветка и worktree останутся для разбора.")))
+    if (!(await window.mf.confirm(`Отклонить ${id}`, "Пометит стори как неудачную; черновик работы сохранится — в проект ничего не попадёт.")))
       return;
     await window.mf.storyFail(id, "отклонено на проверке");
     closeReview(); refresh();
@@ -267,7 +305,7 @@ window.Views.board = (() => {
     note(`${label} ${id}: ${r.verdict}`);
     if (r.verdict === "COMPLETE" && id === firstOpenId()) {
       const ap = await window.mf.storyApprove(id, "автопилот: " + r.text.slice(0, 160), "auto");
-      note(ap.ok ? `автопилот: ${id} слито ✓` : `автопилот: ${id} не прошло gate — оставлено на ручную проверку`);
+      note(ap.ok ? `автопилот: ${id} принято в проект ✓` : `автопилот: ${id} не прошло тесты — оставлено на ручную проверку`);
     } else if (r.verdict === "FAILED") {
       await window.mf.storyFail(id, "автопилот: " + r.text.slice(0, 160));
     }
@@ -284,13 +322,13 @@ window.Views.board = (() => {
       if (ctaLabel) { cta.textContent = ctaLabel; cta.onclick = fn; }
     };
     if (!snap || !snap.goals)
-      return show("Шаг 1 · Плана нет — опишите фичу, планировщик разложит её на стори.",
-        "Открыть «План»", () => document.querySelector('.tab[data-tab="plan"]').click());
+      return show("Шаг 1 · Опишите ниже, что построить — планировщик разложит на стори, агенты сделают.",
+        null);
     const gs = snap.goals.goals;
     const by = (st) => gs.filter((g) => laneState(g) === st);
     const rev = by("review"), run = by("running"), pen = by("pending"), fail = by("failed");
     if (rev.length)
-      return show(`Шаг 3 · ${rev[0].id} ждёт проверки — посмотрите диф и примите merge.`,
+      return show(`Шаг 3 · ${rev[0].id} ждёт проверки — посмотрите изменения и примите работу.`,
         `Проверить ${rev[0].id}`, () => openReview(rev[0].id));
     if (run.length)
       return show(`Шаг 2 · Агент в полёте (${run.map((g) => g.id).join(", ")}) — живой лог на дорожке.` +
@@ -365,6 +403,59 @@ window.Views.board = (() => {
     finally { go.disabled = false; }
   }
 
+  // ── композер на пустой доске: описал → план → полосы на месте, без вкладок ──
+  let composing = false, bcProposed = null, bcBrief = "";
+  function composerStream(m) {
+    if (m.tag !== "plan" || !composing) return;
+    const out = document.getElementById("bc-stream");
+    out.classList.remove("hidden");
+    const stick = out.scrollTop + out.clientHeight >= out.scrollHeight - 8;
+    if (m.error) out.textContent += `\n[ошибка] ${m.error}`;
+    else if (m.ev && m.ev.type === "assistant" && m.ev.message && Array.isArray(m.ev.message.content))
+      for (const b of m.ev.message.content) {
+        if (b.type === "thinking" && b.thinking) out.textContent += b.thinking;
+        if (b.type === "text" && b.text) out.textContent += b.text;
+      }
+    if (stick) out.scrollTop = out.scrollHeight;
+  }
+  async function composerGo() {
+    bcBrief = document.getElementById("bc-input").value.trim();
+    if (!bcBrief) return;
+    const go = document.getElementById("bc-go");
+    go.disabled = true; composing = true;
+    document.getElementById("bc-status").textContent = "планировщик читает память проекта, затем думает…";
+    document.getElementById("bc-stream").textContent = "";
+    document.getElementById("bc-preview").classList.add("hidden");
+    const r = await window.mf.planGenerate(bcBrief);
+    go.disabled = false; composing = false;
+    if (!r.ok) { document.getElementById("bc-status").textContent = r.error || "не получилось — попробуйте переформулировать"; return; }
+    bcProposed = r.stories;
+    document.getElementById("bc-status").textContent = `предложено сторей: ${r.stories.length} — проверьте и примите`;
+    const ol = document.getElementById("bc-stories");
+    ol.innerHTML = "";
+    for (const s of r.stories) {
+      const [t, o] = [s.split("::")[0], s.split("::").slice(1).join("::")];
+      const li = document.createElement("li");
+      li.innerHTML = `<div class="st-title">${esc(t)}</div><div class="st-obj">${esc(o)}</div>`;
+      ol.appendChild(li);
+    }
+    document.getElementById("bc-preview").classList.remove("hidden");
+  }
+  async function composerAccept() {
+    if (!bcProposed) return;
+    const r = await window.mf.planAccept(bcBrief.slice(0, 90), bcProposed, "create");
+    document.getElementById("bc-status").textContent = (r.out || r.err || "").split("\n")[0];
+    bcProposed = null;
+    document.getElementById("bc-preview").classList.add("hidden");
+    document.getElementById("bc-stream").classList.add("hidden");
+    refresh();                       // план создан → render() сам заменит композер полосами
+  }
+  function composerReset() {
+    bcProposed = null;
+    for (const id of ["bc-preview", "bc-stream"]) document.getElementById(id).classList.add("hidden");
+    document.getElementById("bc-status").textContent = "";
+  }
+
   const note = (t) => { document.getElementById("tm-note").textContent = t; };
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -397,6 +488,10 @@ window.Views.board = (() => {
     document.getElementById("board-wizard-open").addEventListener("click", wizardOpen);
     document.getElementById("board-open-plan").addEventListener("click",
       () => document.querySelector('.tab[data-tab="plan"]').click());
+    document.getElementById("bc-go").addEventListener("click", composerGo);
+    document.getElementById("bc-accept").addEventListener("click", composerAccept);
+    document.getElementById("bc-discard").addEventListener("click", composerReset);
+    window.mf.onClaudeStream(composerStream);
     document.getElementById("board-run-demo").addEventListener("click", async (e) => {
       const original = e.target.textContent;
       e.target.disabled = true; e.target.textContent = "…";

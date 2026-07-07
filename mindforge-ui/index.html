@@ -18,6 +18,8 @@
       <span class="proj-ico">▣</span><span class="proj-name">…</span><span class="proj-caret">▾</span>
     </button>
     <div id="proj-menu" class="proj-menu hidden"></div>
+    <button id="quick-btn" class="proj-btn quick-btn"
+      title="Быстрая задача — один агент прямо в проекте, интерактивно, без плана и доски">⚡</button>
     <div class="mode-seg" title="Шкала доверия: Ручной — merge только вами; Ревью — LLM обязательно смотрит диф, merge всё равно вручную; Авто — merge сам при зелёных тестах">
       <input type="checkbox" id="autopilot" class="hidden" />
       <button id="mode-manual" class="on" data-mode="manual" data-i18n="mode.manual">Ручной</button>
@@ -55,12 +57,26 @@
         <div id="lanes"></div>
         </div>
         <div id="board-empty" class="empty hidden">
-          <div class="empty-title" data-i18n="board.empty.title">Плана нет</div>
-          <div class="empty-hint" data-i18n="board.empty.hint">Составьте план вручную — или опишите фичу в «План», и планировщик разложит её сам.</div>
-          <div class="empty-actions">
-            <button id="board-wizard-open" class="btn primary small" data-i18n="board.empty.create">Создать план</button>
-            <button id="board-open-plan" class="btn ghost small" data-i18n="board.empty.open">Открыть «План»</button>
-            <button id="board-run-demo" class="btn ghost small" data-i18n="board.empty.demo">Запустить демо</button>
+          <div class="empty-title" data-i18n="board.composer.title">Что построить?</div>
+          <div class="empty-composer">
+            <textarea id="bc-input" rows="3" data-i18n-ph="plan.placeholder"
+              placeholder="Что нужно построить? Планировщик сначала прочитает память проекта, затем разложит задачу на 1–4 стори с непересекающимися файлами."></textarea>
+            <div class="empty-actions">
+              <button id="bc-go" class="btn primary small" data-i18n="plan.go">Спланировать</button>
+              <button id="board-wizard-open" class="btn ghost small" data-i18n="board.empty.manual">Составить вручную</button>
+              <button id="board-run-demo" class="btn ghost small" data-i18n="board.empty.demo">Запустить демо</button>
+              <button id="board-open-plan" class="btn ghost small hidden" data-i18n="board.empty.open">Открыть «План»</button>
+            </div>
+            <div id="bc-status" class="status-line"></div>
+            <pre id="bc-stream" class="stream bc-stream hidden"></pre>
+            <div id="bc-preview" class="bc-preview hidden">
+              <div class="pane-title" data-i18n="plan.preview">Предложенные стори — проверьте перед принятием</div>
+              <ol id="bc-stories"></ol>
+              <div class="empty-actions">
+                <button id="bc-accept" class="btn ok small" data-i18n="board.composer.accept">Принять план</button>
+                <button id="bc-discard" class="btn ghost small" data-i18n="plan.discard">Отклонить</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -261,6 +277,19 @@
     </div>
   </div>
 
+  <!-- быстрая задача: одно поручение → интерактивный claude во вкладке «Терминал» -->
+  <div id="quick-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-title" data-i18n="quick.title">Быстрая задача</div>
+      <div class="modal-sub" data-i18n="quick.sub">Одно поручение одному агенту прямо в папке проекта — интерактивно, во вкладке «Терминал». Без плана, полос и церемоний.</div>
+      <textarea id="quick-input" rows="3" placeholder="что сделать…" spellcheck="false"></textarea>
+      <div class="modal-actions">
+        <button id="quick-go" class="btn primary small" data-i18n="quick.go">Запустить в терминале</button>
+        <button id="quick-cancel" class="btn ghost small" data-i18n="wizard.cancel">Отмена</button>
+      </div>
+    </div>
+  </div>
+
   <!-- review drawer -->
   <aside id="drawer" class="drawer hidden">
     <div class="drawer-head">
@@ -268,9 +297,10 @@
       <button id="drawer-close" class="btn ghost">Закрыть</button>
     </div>
     <pre id="drawer-body" class="stream"></pre>
+    <div id="drawer-state" class="status-line"></div>
     <div class="drawer-actions">
-      <button id="drawer-approve" class="btn ok">Принять — тесты, merge, уборка</button>
-      <button id="drawer-fail" class="btn danger">Провалить — вернуть</button>
+      <button id="drawer-approve" class="btn ok" data-i18n="drawer.approve">Принять работу — тесты и в проект</button>
+      <button id="drawer-fail" class="btn danger" data-i18n="drawer.reject">Отклонить — на доработку</button>
     </div>
     <div id="drawer-progress" class="drawer-progress"></div>
   </aside>

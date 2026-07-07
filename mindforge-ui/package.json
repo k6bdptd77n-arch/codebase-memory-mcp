@@ -44,6 +44,7 @@
     ],
     "mac": {
       "target": "dmg",
+      "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",

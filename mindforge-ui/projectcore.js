@@ -74,4 +74,22 @@ async function createProjectAt(installDir, parentDir, name, env, seedDir) {
   return { ok: true, target, steps, warning };
 }
 
-module.exports = { okProjectName, createProjectAt };
+// Стори работают только с файлами СВОЕГО проекта: абсолютный путь или ~/ вне repoDir в
+// тексте стори означает, что worktree-агент упрётся в песочницу и провалится поздно и
+// непонятно (наблюдалось вживую: «создай папку на Desktop»). Ловим на этапе ПЛАНА.
+// Возвращает первый «чужой» путь или null, если всё в границах проекта.
+function checkStoriesInProject(stories, repoDir) {
+  const root = path.resolve(String(repoDir || ""));
+  const re = /~\/[^\s'"`)\],;]*|\/(?:Users|home|tmp|var|etc|opt)\/[^\s'"`)\],;]*/g;
+  for (const s of stories || []) {
+    for (let m of String(s).match(re) || []) {
+      m = m.replace(/[.:]+$/, "");                           // точка в конце предложения — не часть пути
+      if (m.startsWith("~")) return m;                       // домашние пути — всегда вне
+      const p = path.resolve(m);
+      if (p !== root && !p.startsWith(root + path.sep)) return m;
+    }
+  }
+  return null;
+}
+
+module.exports = { okProjectName, createProjectAt, checkStoriesInProject };
