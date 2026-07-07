@@ -27,10 +27,13 @@
       "main.js",
       "preload.js",
       "renderer.js",
+      "i18n.js",
+      "projectcore.js",
       "index.html",
       "styles.css",
       "views/**",
-      "fonts/**"
+      "fonts/**",
+      "demo-project/**"
     ],
     "extraResources": [
       { "from": "../fablize", "to": "fablize",

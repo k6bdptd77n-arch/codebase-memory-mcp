@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="fonts/fonts.css" />
   <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
   <link rel="stylesheet" href="styles.css" />
+  <script src="i18n.js"></script>
   <title>MindForge</title>
 </head>
 <body>
@@ -19,9 +20,9 @@
     <div id="proj-menu" class="proj-menu hidden"></div>
     <div class="mode-seg" title="Шкала доверия: Ручной — merge только вами; Ревью — LLM обязательно смотрит диф, merge всё равно вручную; Авто — merge сам при зелёных тестах">
       <input type="checkbox" id="autopilot" class="hidden" />
-      <button id="mode-manual" class="on" data-mode="manual">Ручной</button>
-      <button id="mode-review" data-mode="review">Ревью</button>
-      <button id="mode-auto" data-mode="auto">Авто</button>
+      <button id="mode-manual" class="on" data-mode="manual" data-i18n="mode.manual">Ручной</button>
+      <button id="mode-review" data-mode="review" data-i18n="mode.review">Ревью</button>
+      <button id="mode-auto" data-mode="auto" data-i18n="mode.auto">Авто</button>
     </div>
   </div>
 
@@ -35,12 +36,12 @@
     <!-- ── sidebar: навигация как в Cursor ──────────────────────────────── -->
     <aside id="sidebar">
       <nav id="tabs">
-        <button class="tab active" data-tab="board"><span class="tab-ico">▤</span>Доска</button>
-        <button class="tab" data-tab="plan"><span class="tab-ico">✎</span>План</button>
-        <button class="tab" data-tab="brain"><span class="tab-ico">◉</span>Мозг</button>
-        <button class="tab" data-tab="metrics"><span class="tab-ico">∿</span>Метрики</button>
-        <button class="tab" data-tab="settings"><span class="tab-ico">⚙</span>Настройки</button>
-        <button class="tab" data-tab="terminal"><span class="tab-ico">❯</span>Терминал</button>
+        <button class="tab active" data-tab="board"><span class="tab-ico">▤</span><span data-i18n="nav.board">Доска</span></button>
+        <button class="tab" data-tab="plan"><span class="tab-ico">✎</span><span data-i18n="nav.plan">План</span></button>
+        <button class="tab" data-tab="brain"><span class="tab-ico">◉</span><span data-i18n="nav.brain">Мозг</span></button>
+        <button class="tab" data-tab="metrics"><span class="tab-ico">∿</span><span data-i18n="nav.metrics">Метрики</span></button>
+        <button class="tab" data-tab="settings"><span class="tab-ico">⚙</span><span data-i18n="nav.settings">Настройки</span></button>
+        <button class="tab" data-tab="terminal"><span class="tab-ico">❯</span><span data-i18n="nav.terminal">Терминал</span></button>
       </nav>
       <div class="sidebar-bottom"></div>
     </aside>
@@ -54,25 +55,26 @@
         <div id="lanes"></div>
         </div>
         <div id="board-empty" class="empty hidden">
-          <div class="empty-title">Плана нет</div>
-          <div class="empty-hint">Составьте план вручную — или опишите фичу в «План», и планировщик разложит её сам.</div>
+          <div class="empty-title" data-i18n="board.empty.title">Плана нет</div>
+          <div class="empty-hint" data-i18n="board.empty.hint">Составьте план вручную — или опишите фичу в «План», и планировщик разложит её сам.</div>
           <div class="empty-actions">
-            <button id="board-wizard-open" class="btn primary small">Создать план</button>
-            <button id="board-open-plan" class="btn ghost small">Открыть «План»</button>
+            <button id="board-wizard-open" class="btn primary small" data-i18n="board.empty.create">Создать план</button>
+            <button id="board-open-plan" class="btn ghost small" data-i18n="board.empty.open">Открыть «План»</button>
+            <button id="board-run-demo" class="btn ghost small" data-i18n="board.empty.demo">Запустить демо</button>
           </div>
         </div>
 
         <!-- ручной план: brief + стори (название, задача, команда проверки) -->
         <div id="plan-wizard" class="plan-wizard hidden">
-          <div class="pane-title">Новый план</div>
-          <label class="wiz-label">Что строим (brief)</label>
+          <div class="pane-title" data-i18n="wizard.title">Новый план</div>
+          <label class="wiz-label" data-i18n="wizard.brief">Что строим (brief)</label>
           <input id="wiz-brief" placeholder="кратко: что должно получиться" spellcheck="false" />
-          <label class="wiz-label">Стори — у каждой своя задача и команда проверки</label>
+          <label class="wiz-label" data-i18n="wizard.stories">Стори — у каждой своя задача и команда проверки</label>
           <div id="wiz-stories"></div>
-          <button id="wiz-add" class="btn ghost small">+ стори</button>
+          <button id="wiz-add" class="btn ghost small" data-i18n="wizard.addStory">+ стори</button>
           <div class="wiz-actions">
-            <button id="wiz-create" class="btn primary small">Создать план</button>
-            <button id="wiz-cancel" class="btn ghost small">Отмена</button>
+            <button id="wiz-create" class="btn primary small" data-i18n="wizard.create">Создать план</button>
+            <button id="wiz-cancel" class="btn ghost small" data-i18n="wizard.cancel">Отмена</button>
             <span id="wiz-err" class="status-line"></span>
           </div>
         </div>
@@ -82,29 +84,29 @@
       <section id="view-plan" class="view">
         <div class="plan-grid">
           <div class="plan-left">
-            <div class="pane-title">Опишите фичу</div>
-            <textarea id="plan-input" placeholder="Что нужно построить? Планировщик сначала прочитает память проекта, затем разложит задачу на 1–4 стори с непересекающимися файлами."></textarea>
+            <div class="pane-title" data-i18n="plan.describe">Опишите фичу</div>
+            <textarea id="plan-input" data-i18n-ph="plan.placeholder" placeholder="Что нужно построить? Планировщик сначала прочитает память проекта, затем разложит задачу на 1–4 стори с непересекающимися файлами."></textarea>
             <div class="plan-examples">
               <button class="ex-chip" type="button">Добавить rate-limiting на логин</button>
               <button class="ex-chip" type="button">Кэшировать ответы API в памяти</button>
               <button class="ex-chip" type="button">Экспорт отчёта в CSV</button>
             </div>
             <div class="plan-actions">
-              <button id="plan-go" class="btn primary">Спланировать</button>
+              <button id="plan-go" class="btn primary" data-i18n="plan.go">Спланировать</button>
               <span id="plan-status" class="status-line"></span>
             </div>
             <div id="plan-preview" class="plan-preview hidden">
-              <div class="pane-title">Предложенные стори — проверьте перед принятием</div>
+              <div class="pane-title" data-i18n="plan.preview">Предложенные стори — проверьте перед принятием</div>
               <ol id="plan-stories"></ol>
               <div class="plan-actions">
-                <button id="plan-accept" class="btn ok">Принять → новый план</button>
-                <button id="plan-append" class="btn ghost">Добавить к текущему</button>
-                <button id="plan-discard" class="btn ghost">Отклонить</button>
+                <button id="plan-accept" class="btn ok" data-i18n="plan.accept">Принять → новый план</button>
+                <button id="plan-append" class="btn ghost" data-i18n="plan.append">Добавить к текущему</button>
+                <button id="plan-discard" class="btn ghost" data-i18n="plan.discard">Отклонить</button>
               </div>
             </div>
           </div>
           <div class="plan-right">
-            <div class="pane-title">Мышление планировщика <span class="live-dot" id="plan-live"></span></div>
+            <div class="pane-title"><span data-i18n="plan.thinking">Мышление планировщика</span> <span class="live-dot" id="plan-live"></span></div>
             <pre id="plan-stream" class="stream"></pre>
           </div>
         </div>
@@ -115,16 +117,16 @@
         <div class="brain-grid">
           <div class="brain-left">
             <div class="brain-toolbar">
-              <input id="brain-q" placeholder="спросить память проекта…" />
-              <button id="brain-search" class="btn ghost">Вспомнить</button>
-              <button id="brain-prune" class="btn ghost danger-ghost">Почистить протухшее…</button>
+              <input id="brain-q" data-i18n-ph="brain.ask" placeholder="спросить память проекта…" />
+              <button id="brain-search" class="btn ghost" data-i18n="brain.recall">Вспомнить</button>
+              <button id="brain-prune" class="btn ghost danger-ghost" data-i18n="brain.prune">Почистить протухшее…</button>
             </div>
             <div id="brain-recall-out" class="recall-out hidden"></div>
-            <div class="pane-title">Факты <em id="brain-count"></em></div>
+            <div class="pane-title"><span data-i18n="brain.facts">Факты</span> <em id="brain-count"></em></div>
             <div id="facts"></div>
           </div>
           <div class="brain-right">
-            <div class="pane-title">Эпизоды — чем закончились прошлые задачи</div>
+            <div class="pane-title" data-i18n="brain.episodes">Эпизоды — чем закончились прошлые задачи</div>
             <div id="episode-list"></div>
           </div>
         </div>
@@ -137,11 +139,11 @@
           <div id="metric-strip" class="stat-strip"></div>
           <div class="metrics-cols">
             <div>
-              <div class="pane-title">Залоченная спека</div>
+              <div class="pane-title" data-i18n="metrics.spec">Залоченная спека</div>
               <div id="spec-view" class="spec-view"></div>
             </div>
             <div>
-              <div class="pane-title">Леджер — последние события</div>
+              <div class="pane-title" data-i18n="metrics.ledger">Леджер — последние события</div>
               <div id="ledger-view" class="ledger-view"></div>
             </div>
           </div>
@@ -152,13 +154,13 @@
       <section id="view-settings" class="view">
         <div class="settings-grid">
           <nav id="settings-nav">
-            <button class="snav active" data-sec="crew">Экипаж</button>
-            <button class="snav" data-sec="models">Модели и провайдеры</button>
-            <button class="snav" data-sec="mcp">MCP-серверы</button>
-            <button class="snav" data-sec="appearance">Оформление</button>
+            <button class="snav active" data-sec="crew" data-i18n="settings.crew">Экипаж</button>
+            <button class="snav" data-sec="models" data-i18n="settings.models">Модели и провайдеры</button>
+            <button class="snav" data-sec="mcp" data-i18n="settings.mcp">MCP-серверы</button>
+            <button class="snav" data-sec="appearance" data-i18n="settings.appearance">Оформление</button>
             <div class="snav-footer">
               <span id="crew-status" class="status-line"></span>
-              <button id="crew-save" class="btn primary small" disabled>Сохранить</button>
+              <button id="crew-save" class="btn primary small" disabled data-i18n="settings.save">Сохранить</button>
             </div>
           </nav>
           <div id="settings-body">
@@ -191,6 +193,11 @@
                   <div class="th-desc">космос, приборный янтарь, телеметрийная бирюза</div>
                   <div class="th-strip"><i style="background:#0A0F1E;border:1px solid #1C2A47"></i><i style="background:#FFB347"></i><i style="background:#4FD6BE"></i></div>
                 </div>
+              </div>
+              <div class="sec-sub" style="margin-top:18px">Язык интерфейса / Interface language</div>
+              <div class="lang-seg">
+                <button class="on" data-locale="en">English</button>
+                <button data-locale="ru">Русский</button>
               </div>
             </div>
           </div>

@@ -397,6 +397,13 @@ window.Views.board = (() => {
     document.getElementById("board-wizard-open").addEventListener("click", wizardOpen);
     document.getElementById("board-open-plan").addEventListener("click",
       () => document.querySelector('.tab[data-tab="plan"]').click());
+    document.getElementById("board-run-demo").addEventListener("click", async (e) => {
+      const original = e.target.textContent;
+      e.target.disabled = true; e.target.textContent = "…";
+      const r = await window.mf.runDemo();
+      if (!r.ok) note(r.error || "не удалось запустить демо");
+      e.target.disabled = false; e.target.textContent = original;
+    });
     document.getElementById("wiz-add").addEventListener("click", wizardRow);
     document.getElementById("wiz-create").addEventListener("click", wizardSubmit);
     document.getElementById("wiz-cancel").addEventListener("click", wizardClose);

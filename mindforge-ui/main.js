@@ -729,6 +729,31 @@ function createWindow() {
     return res;
   });
 
+  // "Запустить демо": bootstraps a real, tiny Python project + a real 2-story plan (two
+  // independent new files, so the worktree agents never conflict) — no dialog, one click.
+  // Honest by design: the plan's outcome is whatever actually happens when you run it, not a
+  // staged result. Idempotent — re-running just switches to the existing demo if present.
+  ipcMain.handle("run-demo", async () => {
+    const target = path.join(app.getPath("documents"), "MindForge-Demo");
+    if (!fs.existsSync(target)) {
+      const seed = path.join(__dirname, "demo-project");
+      const res = await createProjectAt(INSTALL, app.getPath("documents"), "MindForge-Demo", null, seed);
+      if (!res.ok) return res;
+    }
+    switchProject(target);
+    if (!fs.existsSync(path.join(target, ".fablize", "goals.json"))) {
+      await new Promise((r) => setTimeout(r, 300));  // let switchProject's fs settle before goals.py runs
+      await engine("goals.py", ["create", "--brief", "MindForge demo — two independent features",
+        "--goal", "multiply::Create a NEW file multiply.py with a function multiply(a, b) " +
+          "that returns a*b, and a NEW file test_multiply.py with a test asserting " +
+          "multiply(3, 4) == 12. Do not edit any other file. Verify: python3 -m pytest test_multiply.py -q",
+        "--goal", "divide::Create a NEW file divide.py with a function divide(a, b) that " +
+          "returns a/b, and a NEW file test_divide.py with a test asserting divide(10, 2) == 5. " +
+          "Do not edit any other file. Verify: python3 -m pytest test_divide.py -q"]);
+    }
+    return { ok: true, target };
+  });
+
   // confirmations for destructive actions live in main (native dialog — can't be spoofed by CSS)
   ipcMain.handle("confirm", async (_e, { title, detail }) => {
     const r = await dialog.showMessageBox(win, { type: "warning", buttons: ["Cancel", title],

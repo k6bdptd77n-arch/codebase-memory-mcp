@@ -48,6 +48,21 @@ High-quality parsing through [tree-sitter](https://tree-sitter.github.io/tree-si
 > The C core below is **unmodified upstream** — fablize lives entirely in `fablize/` (pure
 > stdlib Python + plain-text packs), so updates from [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) merge cleanly.
 
+> #### MindForge turns the CLI coding agent you already pay for into a local team with a memory
+>
+> It plans, builds in parallel git worktrees, and **merges only when your tests pass** — never
+> on an agent's say-so. Local, on your own subscription, gated on green.
+>
+> | | MindForge | Cursor Cloud Agents | OpenAI Codex | Conductor / Claude Squad | Serena |
+> |---|---|---|---|---|---|
+> | Runs 100% local | ✅ | ❌ (cloud VMs) | ❌ (cloud) | ✅ | ✅ |
+> | Your existing CLI subscription | ✅ | ❌ (metered cloud) | ❌ (metered cloud) | ✅ (Claude/Codex only) | n/a |
+> | Merges gated on a real verify command | ✅ | partial (its own tests) | partial | ❌ (review only) | ❌ (context only) |
+> | Cross-session memory (brain) | ✅ | preview-gated (Dreaming) | ❌ | ❌ | ❌ |
+> | Structural code graph (not grep) | ✅ (158 languages) | ❌ | ❌ | ❌ | ✅ (LSP, no graph) |
+>
+> No competitor holds all five. See `ROADMAP.md` for the full thesis.
+
 > **Research** — The design and benchmarks behind this project are described in the preprint [*Codebase-Memory: Tree-Sitter-Based Knowledge Graphs for LLM Code Exploration via MCP*](https://arxiv.org/abs/2603.27277) (arXiv:2603.27277). Evaluated across 31 real-world repositories: 83% answer quality, 10× fewer tokens, 2.1× fewer tool calls vs. file-by-file exploration.
 
 > **Security & Trust** — This tool reads your codebase and writes to your agent configuration files. That is what it is designed to do. If you prefer to audit before running, the [full source is here](https://github.com/DeusData/codebase-memory-mcp) — every release binary is signed, checksummed, and scanned by 70+ antivirus engines. All processing happens 100% locally; your code never leaves your machine. Found a security issue? We want to know — see [SECURITY.md](SECURITY.md). Security is Priority #1 for us.

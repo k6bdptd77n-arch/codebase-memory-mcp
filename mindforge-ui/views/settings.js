@@ -272,6 +272,17 @@ window.Views.settings = (() => {
     applyTheme(localStorage.getItem("mf-theme") || "cursor");
     for (const card of document.querySelectorAll(".theme-card"))
       card.addEventListener("click", () => applyTheme(card.dataset.theme));
+    if (window.I18N) {
+      window.I18N.init();
+      for (const btn of document.querySelectorAll(".lang-seg button")) {
+        btn.classList.toggle("on", btn.dataset.locale === window.I18N.locale);
+        btn.addEventListener("click", () => {
+          window.I18N.setLocale(btn.dataset.locale);
+          document.querySelectorAll(".lang-seg button").forEach((b) =>
+            b.classList.toggle("on", b.dataset.locale === btn.dataset.locale));
+        });
+      }
+    }
     $("crew-save").addEventListener("click", save);
     $("crew-badge").addEventListener("click", () => document.querySelector('.tab[data-tab="settings"]').click());
     for (const nav of document.querySelectorAll(".snav")) {

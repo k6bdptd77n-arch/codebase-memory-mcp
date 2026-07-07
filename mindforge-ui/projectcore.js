@@ -21,10 +21,12 @@ function runIn(cwd, cmd, args, env) {
   });
 }
 
-// Creates <parentDir>/<name>: mkdir, git init, fablize disciplines. Returns
-// { ok, target, steps[], warning? } — ok means "project usable" (a disciplines
-// failure degrades gracefully: the project still opens, with a clear warning).
-async function createProjectAt(installDir, parentDir, name, env) {
+// Creates <parentDir>/<name>: mkdir, [optional seed copy], git init, fablize disciplines.
+// Returns { ok, target, steps[], warning? } — ok means "project usable" (a disciplines
+// failure degrades gracefully: the project still opens, with a clear warning). seedDir, if
+// given, is copied in BEFORE git init so its files are captured by the initial commit — used
+// by the bundled demo project (see main.js runDemo()).
+async function createProjectAt(installDir, parentDir, name, env, seedDir) {
   const steps = [];
   const step = (n, ok, out) => { steps.push({ name: n, ok, out: String(out || "").trim().slice(-800) }); return ok; };
   if (!okProjectName(name))
@@ -36,6 +38,11 @@ async function createProjectAt(installDir, parentDir, name, env) {
     return { ok: false, target, steps: [{ name: "mkdir", ok: false, out: "такая папка уже существует" }] };
   try { fs.mkdirSync(target, { recursive: true }); step("mkdir", true, target); }
   catch (e) { return { ok: false, target, steps: [{ name: "mkdir", ok: false, out: e.message }] }; }
+
+  if (seedDir && fs.existsSync(seedDir)) {
+    try { fs.cpSync(seedDir, target, { recursive: true }); step("seed", true, seedDir); }
+    catch (e) { return { ok: false, target, steps: [...steps, { name: "seed", ok: false, out: e.message }] }; }
+  }
 
   const g = await runIn(target, "git", ["init"], env);
   if (!step("git init", g.ok, g.out + g.err)) return { ok: false, target, steps };
