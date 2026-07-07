@@ -51,6 +51,19 @@ async function createProjectAt(installDir, parentDir, name, env) {
     step("дисциплины fablize", false, "installer не найден: " + installer);
     warning = "проект создан без дисциплин fablize (installer не найден в " + installDir + ")";
   }
+
+  // Первый коммит обязателен: запуск историй делает `git worktree add … HEAD`,
+  // а HEAD в репозитории без коммитов не резолвится — история падала бы сразу.
+  await runIn(target, "git", ["add", "-A"], env);
+  let c = await runIn(target, "git",
+    ["commit", "--allow-empty", "-m", "MindForge: инициализация проекта"], env);
+  if (!c.ok) // машина без настроенной git-идентичности
+    c = await runIn(target, "git",
+      ["-c", "user.name=MindForge", "-c", "user.email=mindforge@local",
+       "commit", "--allow-empty", "-m", "MindForge: инициализация проекта"], env);
+  if (!step("первый коммит", c.ok, c.out + c.err) && !warning)
+    warning = "проект создан, но первый коммит не удался — истории не запустятся, " +
+      "выполните вручную: git -C \"" + target + "\" commit --allow-empty -m init";
   return { ok: true, target, steps, warning };
 }
 
