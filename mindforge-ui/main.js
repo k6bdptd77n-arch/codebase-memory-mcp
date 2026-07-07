@@ -788,7 +788,7 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // MINDFORGE_PROJECT presets the project (testing/headless); otherwise restore
   // the last explicitly opened one. Env presets are NOT persisted as "last".
   const envP = process.env.MINDFORGE_PROJECT;
@@ -796,6 +796,22 @@ app.whenReady().then(() => {
   else {
     const last = loadPrefs().last;
     if (typeof last === "string" && fs.existsSync(last)) projectDir = path.resolve(last);
+    else if (app.isPackaged) {
+      // Packaged: INSTALL is process.resourcesPath — a folder INSIDE the app bundle, not a
+      // usable project (no .git of its own; git commands run there silently resolve to
+      // whatever repo happens to enclose the install location, which is meaningless/dangerous).
+      // First launch with nothing persisted → give the user a REAL empty git project instead
+      // of quietly treating the app's own installation folder as "the project". Deliberately
+      // NOT under Documents/Desktop/Downloads: macOS TCC gates programmatic (non-dialog) writes
+      // there per-app-bundle, and a freshly built, never-approved bundle has no usage-description
+      // entitlement — the write silently no-ops instead of prompting. The home directory root
+      // itself isn't a protected location, so this always works on first launch.
+      const playground = path.join(os.homedir(), "MindForge Playground");
+      if (!fs.existsSync(path.join(playground, ".git")))
+        await createProjectAt(INSTALL, os.homedir(), "MindForge Playground");
+      projectDir = playground;
+    }
+    // dev (unpackaged): INSTALL is the real repo checkout — a sensible default, unchanged.
   }
   createWindow();
 });
