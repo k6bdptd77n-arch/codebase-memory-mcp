@@ -20,8 +20,8 @@ for (const tab of document.querySelectorAll(".tab")) {
 const term = new Terminal({
   fontFamily: '"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace',
   fontSize: 12.5, cursorBlink: true,
-  theme: { background: "#131316", foreground: "#D6D6D9", cursor: "#ECECEE",
-           selectionBackground: "#2A2A2E", brightGreen: "#3FB950", yellow: "#D9A03F" },
+  theme: { background: "#0F1011", foreground: "#D3D5D9", cursor: "#E8EAED",
+           selectionBackground: "#26282C", brightGreen: "#34C77B", yellow: "#E8A33D" },
 });
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
@@ -138,15 +138,116 @@ window.mf.onProjectChanged(() => {
 });
 refreshProject();
 
-// ── autopilot toggle ─────────────────────────────────────────────────────────
+// ── режим Ручной|Авто (титлбар) — тот же скрытый чекбокс #autopilot ─────────
 const ap = document.getElementById("autopilot");
 ap.checked = localStorage.getItem("mf-autopilot") === "1";
-const apState = () => {
-  document.getElementById("ap-state").textContent = ap.checked ? "Автопилот" : "Ручной режим";
-  document.getElementById("ap-state").classList.toggle("auto", ap.checked);
+const modeBtns = { manual: document.getElementById("mode-manual"), auto: document.getElementById("mode-auto") };
+function paintMode() {
+  modeBtns.manual.classList.toggle("on", !ap.checked);
+  modeBtns.auto.classList.toggle("on", ap.checked);
+}
+function setMode(auto) {
+  ap.checked = auto;
+  localStorage.setItem("mf-autopilot", auto ? "1" : "0");
+  paintMode();
+}
+modeBtns.manual.addEventListener("click", () => setMode(false));
+modeBtns.auto.addEventListener("click", () => setMode(true));
+paintMode();
+
+// ── ESC закрывает верхний слой: палитру, модалку, drawer, меню проекта ──────
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const palette = document.getElementById("palette");
+  if (!palette.classList.contains("hidden")) { palette.classList.add("hidden"); return; }
+  const modal = document.getElementById("proj-modal");
+  if (!modal.classList.contains("hidden")) { modal.classList.add("hidden"); return; }
+  const drawer = document.getElementById("drawer");
+  if (!drawer.classList.contains("hidden")) { document.getElementById("drawer-close").click(); return; }
+  document.getElementById("proj-menu").classList.add("hidden");
+});
+
+// ── command palette (⌘K / Ctrl+K) — только уже существующие действия ─────────
+const palette = document.getElementById("palette");
+const palInput = document.getElementById("palette-q");
+const palList = document.getElementById("palette-list");
+let palItems = [], palSel = 0;
+
+function buildActions(stories) {
+  const tab = (name, label) => ({ label, k: "вкладка",
+    run: () => document.querySelector(`.tab[data-tab="${name}"]`).click() });
+  const acts = [
+    tab("board", "Доска"), tab("plan", "План"), tab("brain", "Мозг"),
+    tab("metrics", "Метрики"), tab("settings", "Настройки"), tab("terminal", "Терминал"),
+    { label: "Создать план", k: "действие", run: () => {
+      document.querySelector('.tab[data-tab="board"]').click();
+      document.getElementById("board-wizard-open").click(); } },
+    { label: "Открыть папку…", k: "проект", run: () => window.mf.projectOpen() },
+    { label: "Новый проект…", k: "проект", run: () => showProjModal() },
+    { label: "Открыть 3D-граф", k: "действие", run: () => window.mf.openGraph() },
+    { label: ap.checked ? "Режим → Ручной" : "Режим → Авто", k: "режим", run: () => setMode(!ap.checked) },
+  ];
+  for (const g of stories)
+    if (g && g.status !== "complete")
+      acts.push({ label: `Открыть ${g.id} · ${g.title}`, k: "стори",
+        run: () => { document.querySelector('.tab[data-tab="board"]').click(); window.Views.board.openReview(g.id); } });
+  return acts;
+}
+
+const fuzzy = (hay, q) => { // подпоследовательность: «нп» найдёт «Новый Проект»
+  let i = 0; for (const ch of hay) if (ch === q[i]) i++; return i === q.length;
 };
-ap.addEventListener("change", () => { localStorage.setItem("mf-autopilot", ap.checked ? "1" : "0"); apState(); });
-apState();
+function renderPal(q) {
+  const ql = q.toLowerCase().trim();
+  palItems = baseActions.filter((a) => !ql || fuzzy(a.label.toLowerCase(), ql));
+  palSel = 0;
+  palList.innerHTML = "";
+  if (!palItems.length) { palList.innerHTML = `<div class="pal-empty">ничего не найдено</div>`; return; }
+  palItems.forEach((a, i) => {
+    const b = document.createElement("button");
+    b.className = "pal-item" + (i === palSel ? " sel" : "");
+    b.innerHTML = `<span></span><span class="pal-k"></span>`;
+    b.children[0].textContent = a.label;
+    b.children[1].textContent = a.k || "";
+    b.addEventListener("click", () => runPal(i));
+    b.addEventListener("mousemove", () => setPalSel(i));
+    palList.appendChild(b);
+  });
+}
+function setPalSel(i) {
+  palSel = i;
+  [...palList.children].forEach((el, j) => el.classList && el.classList.toggle("sel", j === i));
+  const sel = palList.children[i];
+  if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest" });
+}
+function runPal(i) {
+  const a = palItems[i];
+  palette.classList.add("hidden");
+  if (a) try { a.run(); } catch {}
+}
+let baseActions = [];
+async function openPalette() {
+  let stories = [];
+  try { const s = await window.mf.snapshot(); if (s && s.goals) stories = s.goals.goals; } catch {}
+  baseActions = buildActions(stories);
+  palette.classList.remove("hidden");
+  palInput.value = "";
+  renderPal("");
+  palInput.focus();
+}
+palInput.addEventListener("input", () => renderPal(palInput.value));
+palInput.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { e.preventDefault(); setPalSel(Math.min(palSel + 1, palItems.length - 1)); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); setPalSel(Math.max(palSel - 1, 0)); }
+  else if (e.key === "Enter") { e.preventDefault(); runPal(palSel); }
+});
+palette.addEventListener("click", (e) => { if (e.target === palette) palette.classList.add("hidden"); });
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    if (palette.classList.contains("hidden")) openPalette(); else palette.classList.add("hidden");
+  }
+});
 
 // ── telemetry clock ──────────────────────────────────────────────────────────
 setInterval(() => {

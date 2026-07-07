@@ -68,6 +68,9 @@ window.Views.plan = (() => {
   }
 
   function init() {
+    // примеры брифа: клик подставляет текст в поле и фокусирует его
+    for (const chip of document.querySelectorAll(".plan-examples .ex-chip"))
+      chip.addEventListener("click", () => { const t = $("plan-input"); t.value = chip.textContent; t.focus(); });
     $("plan-go").addEventListener("click", go);
     $("plan-accept").addEventListener("click", () => accept("create"));
     $("plan-append").addEventListener("click", () => accept("add"));

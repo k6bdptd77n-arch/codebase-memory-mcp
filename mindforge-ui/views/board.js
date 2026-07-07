@@ -7,12 +7,31 @@ window.Views.board = (() => {
   const lanes = () => document.getElementById("lanes");
   let snap = null;
   let pollTimer = null;
+  let mergedOpen = false;                // архивная группа «Смержено» раскрыта?
   let openLaneLogs = new Set();          // story ids with visible live log
 
   const STATE_LABEL = {
-    pending: "ожидание", running: "в полёте", review: "на проверке",
-    complete: "слито ✓", failed: "провал", blocked: "заблокировано", in_progress: "активна",
+    pending: "ожидание", running: "в работе", review: "на ревью",
+    complete: "слито", failed: "провал", blocked: "заблокировано", in_progress: "активна",
   };
+
+  // «взлётка»: план → код → verify → ревью → merge(gate). Честная проекция
+  // доступного состояния; гейт зеленеет ТОЛЬКО на complete.
+  function phaseRail(st, hasBranch) {
+    const seg = ["план", "код", "verify", "ревью", "merge"];
+    const fill = { pending: 1, in_progress: 2, running: 1, review: 4,
+      complete: 5, failed: hasBranch ? 4 : 2 }[st] ?? 1;
+    let h = '<div class="phase-rail">';
+    for (let i = 0; i < 5; i++) {
+      let cls = "";
+      if (st === "complete") cls = "ok";
+      else if (i < fill) cls = "done";
+      if (st === "running" && i === 1) cls = "run";
+      if (st === "failed" && i === 4) cls = "bad";
+      h += `<i class="${cls}${i === 4 ? " gate" : ""}" title="${seg[i]}"></i>`;
+    }
+    return h + "</div>";
+  }
 
   function laneState(g) {
     const rt = snap.states[g.id] || {};
@@ -43,32 +62,37 @@ window.Views.board = (() => {
     }
     empty.classList.add("hidden");
     wizard.classList.add("hidden");
-    const done = snap.goals.goals.filter((g) => g.status === "complete").length;
-    brief.innerHTML = `${esc(snap.goals.brief)}<small>план полёта · слито ${done}/${snap.goals.goals.length}</small>`;
+    const gs = snap.goals.goals;
+    const done = gs.filter((g) => g.status === "complete").length;
+    brief.innerHTML = `${esc(snap.goals.brief)}<small>слито ${done}/${gs.length}</small>`;
     guide();
     box.innerHTML = "";
     const gate = firstOpenId();
-    for (const g of snap.goals.goals) {
+
+    const laneEl = (g) => {
       const st = laneState(g);
       const rt = snap.states[g.id] || {};
       const el = document.createElement("div");
       el.className = `lane ${st}`;
       el.dataset.id = g.id;
-      const pct = { complete: 100, review: 78, running: 0, failed: 60, in_progress: 40, pending: 0 }[st];
       const tele = st === "running" && (rt.commits != null || rt.elapsedMin != null)
-        ? `<span class="lane-tele">${rt.commits ?? 0} коммитов · ${rt.elapsedMin ?? 0}м</span>` : "";
+        ? `<span class="lane-tele">${rt.commits ?? 0} коммита · ${rt.elapsedMin ?? 0}м</span>` : "";
       el.innerHTML = `
         <div class="lane-top">
           <span class="lane-id">${g.id}</span>
           <span class="lane-title">${esc(g.title)}</span>
-          <span class="lane-status">${tele}${st === "running" ? '<span class="pulse"></span>' : ""}${STATE_LABEL[st]}</span>
+          <span class="lane-status">${tele}<span class="lane-chip">${STATE_LABEL[st]}</span></span>
         </div>
-        <div class="lane-obj" title="нажмите, чтобы развернуть">${esc(g.objective)}</div>
-        <div class="rail"><i style="width:${pct}%"></i></div>
+        <div class="lane-obj" title="${esc(g.objective)}">${esc(g.objective)}</div>
+        ${phaseRail(st, !!rt.branch)}
         ${g.attempts >= 2 ? `<div class="escalation">⚠ эскалация — ${g.attempts} провала подряд; нужна модель сильнее или человек</div>` : ""}
         <div class="lane-log hidden"></div>
         <div class="lane-actions"></div>`;
-      el.querySelector(".lane-obj").addEventListener("click", (e) => e.target.classList.toggle("open"));
+      // строка кликабельна целиком → полный текст и доказательства в drawer
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("button, .lane-log")) return;
+        openReview(g.id);
+      });
       const act = el.querySelector(".lane-actions");
       const btn = (label, cls, fn, disabled, title) => {
         const b = document.createElement("button");
@@ -79,10 +103,10 @@ window.Views.board = (() => {
         act.appendChild(b);
         return b;
       };
-      if (st === "pending") btn("▶ Запустить агента", "amber", () => runStory(g.id));
+      if (st === "pending") btn("▶ Запустить агента", "primary", () => runStory(g.id));
       if (st === "running") { btn("Остановить", "red", () => stopStory(g.id)); showLog(el, g.id); }
       if (st === "review") {
-        btn("Проверить", "teal", () => window.Views.board.openReview(g.id),
+        btn("Проверить", "teal", () => openReview(g.id),
             g.id !== gate, g.id !== gate ? "очередь на merge: сначала более ранние стори" : "");
         btn("Лог", "ghost", () => toggleLog(el, g.id));
       }
@@ -92,7 +116,25 @@ window.Views.board = (() => {
         ev.className = "lane-evidence"; ev.title = g.evidence; ev.textContent = "✓ " + g.evidence;
         act.appendChild(ev);
       }
-      box.appendChild(el);
+      return el;
+    };
+
+    // сначала — что происходит СЕЙЧАС; смерженные сворачиваются в архивную группу
+    const active = gs.filter((g) => laneState(g) !== "complete");
+    const merged = gs.filter((g) => laneState(g) === "complete");
+    for (const g of active) box.appendChild(laneEl(g));
+    if (merged.length) {
+      const grp = document.createElement("div");
+      grp.className = "merged-group" + (mergedOpen ? " open" : "");
+      const head = document.createElement("button");
+      head.className = "merged-head";
+      head.innerHTML = `<span class="chev">▶</span> Смержено (${merged.length})`;
+      head.addEventListener("click", () => { mergedOpen = !mergedOpen; grp.classList.toggle("open", mergedOpen); });
+      const body = document.createElement("div");
+      body.className = "merged-body";
+      for (const g of merged) body.appendChild(laneEl(g));
+      grp.appendChild(head); grp.appendChild(body);
+      box.appendChild(grp);
     }
   }
 
@@ -150,16 +192,30 @@ window.Views.board = (() => {
   async function openReview(id) {
     drawerId = id;
     const d = document.getElementById("drawer");
-    document.getElementById("drawer-title").textContent = `Проверка ${id}`;
+    const g = snap && snap.goals ? snap.goals.goals.find((x) => x && x.id === id) : null;
+    const reviewable = g && laneState(g) === "review" && id === firstOpenId();
+    document.getElementById("drawer-title").textContent = `${id} · ${g ? g.title : ""}`;
     document.getElementById("drawer-progress").textContent = "";
+    // Принять/Провалить активны только для стори, реально стоящей на ревью
+    document.getElementById("drawer-approve").disabled = !reviewable;
+    document.getElementById("drawer-fail").disabled = !(g && laneState(g) === "review");
     const body = document.getElementById("drawer-body");
-    body.textContent = "собираю доказательства…";
+    body.textContent = "";
+    if (g) {
+      const obj = document.createElement("div");
+      obj.className = "drawer-obj";
+      obj.textContent = g.objective + "\n\n";
+      body.appendChild(obj);
+    }
+    const load = document.createElement("div");
+    load.textContent = "собираю доказательства…";
+    body.appendChild(load);
     d.classList.remove("hidden");
     try {
       const ev = await window.mf.reviewEvidence(id);
-      body.textContent = ev.text;
+      load.textContent = ev.text;
       if (ev.ok && ev.patch) renderPatch(body, ev);
-    } catch { body.textContent = "не удалось собрать доказательства — попробуйте ещё раз"; }
+    } catch { load.textContent = "не удалось собрать доказательства — попробуйте ещё раз"; }
   }
   function closeReview() { document.getElementById("drawer").classList.add("hidden"); drawerId = null; }
 

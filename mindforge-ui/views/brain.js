@@ -17,15 +17,17 @@ window.Views.brain = (() => {
     for (const f of facts) {
       const el = document.createElement("div");
       el.className = "fact";
+      // человеку показываем смысл (description), а не kebab-слаг — слаг уходит в подпись
+      const title = (f.description || f.body || f.name || "").trim();
       el.innerHTML = `
         <div class="fact-head">
-          <span class="fact-name">${esc(f.name || "?")}</span>
+          <span class="fact-title">${esc(title)}</span>
           <span class="fact-badge ${esc(f.type || "project")}">${esc(f.type || "?")}</span>
-          <span class="fact-badge scope">${esc(f.scope)}</span>
-          ${f.expires ? `<span class="fact-badge scope">expires ${esc(f.expires)}</span>` : ""}
+          ${f.scope ? `<span class="fact-badge scope">${esc(f.scope)}</span>` : ""}
+          ${f.expires ? `<span class="fact-badge scope">до ${esc(f.expires)}</span>` : ""}
         </div>
-        <div class="fact-desc">${esc(f.description || "")}</div>
-        <div class="fact-body">${esc(f.body || "")}</div>`;
+        <div class="fact-slug">${esc(f.name || "")}</div>
+        <div class="fact-body">${esc(f.body || f.description || "")}</div>`;
       el.addEventListener("click", () => el.classList.toggle("open"));
       box.appendChild(el);
     }
@@ -33,16 +35,36 @@ window.Views.brain = (() => {
     const eps = await window.mf.episodes();
     const list = $("episode-list");
     list.innerHTML = "";
+    let lastDay = "";
     for (const e of eps.slice(0, 40)) {
+      const day = dayLabel(e.ts);
+      if (day && day !== lastDay) {
+        lastDay = day;
+        const h = document.createElement("div");
+        h.className = "ep-day";
+        h.textContent = day;
+        list.appendChild(h);
+      }
       const el = document.createElement("div");
       el.className = "episode";
       const goal = e.goal || e.trace || "";
       const out = e.lesson || e.result || (e.tools ? Object.keys(e.tools).join(" · ") : "");
-      el.innerHTML = `<div class="ep-ts">${esc(String(e.ts || "").slice(0, 16).replace("T", " "))}</div>
-        <div class="ep-goal">${esc(goal.slice(0, 140))}</div>
-        <div class="ep-out">${esc(String(out).slice(0, 140))}</div>`;
+      // без JS-обрезки: CSS клампит одной строкой, клик по эпизоду раскрывает полностью
+      el.innerHTML = `<div class="ep-ts">${esc(String(e.ts || "").slice(11, 16))}</div>
+        <div class="ep-goal">${esc(goal)}</div>
+        <div class="ep-out">${esc(String(out))}</div>`;
+      el.addEventListener("click", () => el.classList.toggle("open"));
       list.appendChild(el);
     }
+  }
+
+  // «2026-07-07T03:14» → «сегодня» / «7 июл 2026» — заголовок дня в ленте эпизодов
+  const MON = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+  function dayLabel(ts) {
+    const m = String(ts || "").slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return "";
+    if (m[0] === new Date().toISOString().slice(0, 10)) return "сегодня";
+    return `${+m[3]} ${MON[+m[2] - 1]} ${m[1]}`;
   }
 
   async function recall() {

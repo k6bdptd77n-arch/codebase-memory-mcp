@@ -14,9 +14,14 @@
   <div id="titlebar">
     <span id="title-text">MindForge</span>
     <button id="proj-btn" class="proj-btn" title="Текущий проект — нажмите, чтобы переключить">
-      <span class="proj-name">…</span><span class="proj-caret">▾</span>
+      <span class="proj-ico">▣</span><span class="proj-name">…</span><span class="proj-caret">▾</span>
     </button>
     <div id="proj-menu" class="proj-menu hidden"></div>
+    <div class="mode-seg" title="АВТО: когда агент заканчивает, claude-ревьюер смотрит диф, и при зелёных тестах стори мержится сама">
+      <input type="checkbox" id="autopilot" class="hidden" />
+      <button id="mode-manual" class="on">Ручной</button>
+      <button id="mode-auto">Авто</button>
+    </div>
   </div>
 
   <div id="shell">
@@ -30,22 +35,17 @@
         <button class="tab" data-tab="settings"><span class="tab-ico">⚙</span>Настройки</button>
         <button class="tab" data-tab="terminal"><span class="tab-ico">❯</span>Терминал</button>
       </nav>
-      <div class="sidebar-bottom">
-        <button id="crew-badge" class="crew-badge" title="Экипаж: модели ролей — нажмите, чтобы настроить"></button>
-        <label class="autopilot" title="АВТО: когда агент заканчивает, claude-ревьюер смотрит диф, и при зелёных тестах стори мержится сама">
-          <input type="checkbox" id="autopilot" />
-          <span class="ap-track"><span class="ap-thumb"></span></span>
-          <span class="ap-state" id="ap-state">Ручной режим</span>
-        </label>
-      </div>
+      <div class="sidebar-bottom"></div>
     </aside>
 
     <main>
       <!-- Board -->
       <section id="view-board" class="view active">
+        <div class="board-col">
         <div id="board-brief" class="board-brief"></div>
         <div id="guide" class="guide"><span class="g-beacon"></span><span id="guide-text"></span><button id="guide-cta" class="btn primary small hidden"></button></div>
         <div id="lanes"></div>
+        </div>
         <div id="board-empty" class="empty hidden">
           <div class="empty-title">Плана нет</div>
           <div class="empty-hint">Составьте план вручную — или опишите фичу в «План», и планировщик разложит её сам.</div>
@@ -77,6 +77,11 @@
           <div class="plan-left">
             <div class="pane-title">Опишите фичу</div>
             <textarea id="plan-input" placeholder="Что нужно построить? Планировщик сначала прочитает память проекта, затем разложит задачу на 1–4 стори с непересекающимися файлами."></textarea>
+            <div class="plan-examples">
+              <button class="ex-chip" type="button">Добавить rate-limiting на логин</button>
+              <button class="ex-chip" type="button">Кэшировать ответы API в памяти</button>
+              <button class="ex-chip" type="button">Экспорт отчёта в CSV</button>
+            </div>
             <div class="plan-actions">
               <button id="plan-go" class="btn primary">Спланировать</button>
               <span id="plan-status" class="status-line"></span>
@@ -122,6 +127,7 @@
       <section id="view-metrics" class="view">
         <div class="metrics-grid">
           <div id="metric-cards" class="metric-cards"></div>
+          <div id="metric-strip" class="stat-strip"></div>
           <div class="metrics-cols">
             <div>
               <div class="pane-title">Залоченная спека</div>
@@ -196,13 +202,22 @@
     <span class="sb-item" id="light-memory"><i></i>Память <em id="light-memory-v">—</em></span>
     <span class="sb-item" id="light-procedure"><i></i>План <em id="light-procedure-v">—</em></span>
     <span class="sb-item" id="light-brain"><i></i>Мозг <em id="light-brain-v">—</em></span>
-    <button class="sb-item sb-btn" id="open-graph" title="Открыть 3D-граф памяти в браузере (localhost:9749)">⬡ Открыть 3D-граф</button>
+    <button class="sb-item sb-btn" id="open-graph" title="Открыть 3D-граф памяти в браузере (localhost:9749)">⬡ 3D-граф</button>
+    <button class="sb-item sb-btn" id="crew-badge" title="Экипаж: модели ролей — нажмите, чтобы настроить"></button>
     <span class="sb-flex"></span>
     <span class="sb-item" id="tm-note"></span>
     <span class="sb-item" id="tm-plan">—</span>
     <span class="sb-item" id="tm-agents">агентов: 0</span>
     <span class="sb-item" id="tm-clock"></span>
   </footer>
+
+  <!-- command palette (⌘K): только существующие действия -->
+  <div id="palette" class="palette hidden">
+    <div class="palette-card">
+      <input id="palette-q" placeholder="Команда… (вкладки, проекты, стори)" spellcheck="false" />
+      <div id="palette-list" class="palette-list"></div>
+    </div>
+  </div>
 
   <!-- new-project modal: имя здесь, папка — в нативном диалоге main-процесса -->
   <div id="proj-modal" class="modal hidden">
