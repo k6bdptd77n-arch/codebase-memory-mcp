@@ -126,6 +126,20 @@ Honest boundary: the orchestrator never checkpoints for you — review each stor
 log, then checkpoint via `goals.py` and merge. `crew/` is the optional unattended driver on
 top (a planner/reviewer LLM loop over these same engines).
 
+### Closed loops
+
+For a *single* task that must reach a verifiable bar, `scripts/loop.py` runs a **closed loop**:
+a fixed kickoff, a gate (`--check`) run every pass, and a hard stop (green, `--max`, or the
+same failure repeating). It accumulates failures in `.fablize/loops/<name>/guardrails.md` and
+feeds them back each pass, so the loop gets smarter — with `--reflect` the lesson lands in the
+brain. Bounded path → bounded cost. See `LOOPS.md`.
+
+```bash
+python3 scripts/loop.py catalog                                        # built-in templates
+python3 scripts/loop.py run --name X --check "pytest -q" --dry-run     # one gated pass, no agent
+python3 scripts/loop.py run --name X --check "pytest -q" --agent "claude -p" --max 8 --reflect
+```
+
 ## [debugging / test failure / unknown cause / review] Investigation protocol
 
 Follow `packs/investigation-protocol.txt`: reproduce first → form 3+ competing hypotheses →
