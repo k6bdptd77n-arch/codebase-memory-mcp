@@ -1,5 +1,5 @@
 "use strict";
-const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -209,6 +209,26 @@ const PROVIDER_DEFAULTS = {
   openrouter: { enabled: false, base: "https://openrouter.ai/api", key: "", models: [] },
 };
 
+// Provider API keys are secrets — never store them in cleartext at rest. safeStorage encrypts
+// via the OS keychain; on disk a key becomes { enc: <base64> } and is decrypted into memory on
+// load. A plaintext key from an older config still loads (backward compat) and is upgraded to
+// the encrypted form on the next save. If no keychain is available (some Linux), we fall back to
+// plaintext honestly rather than pretend.
+function encKey(v) {
+  if (!v || typeof v !== "string") return v;                 // already enc-shaped or empty
+  try {
+    if (safeStorage && safeStorage.isEncryptionAvailable())
+      return { enc: safeStorage.encryptString(v).toString("base64") };
+  } catch {}
+  return v;
+}
+function decKey(v) {
+  if (v && typeof v === "object" && typeof v.enc === "string") {
+    try { return safeStorage.decryptString(Buffer.from(v.enc, "base64")); } catch { return ""; }
+  }
+  return v;
+}
+
 function crewLoad() {
   const cfg = { roles: {}, providers: {} };
   for (const src of [readJSON(CREW_GLOBAL), readJSON(crewLocal())]) {
@@ -222,6 +242,8 @@ function crewLoad() {
     cfg.roles[r] = { model: "inherit", cli: "claude", mcp: {}, skills: {}, prompt: "", ...cfg.roles[r] };
   for (const p of Object.keys(PROVIDER_DEFAULTS))
     cfg.providers[p] = { ...PROVIDER_DEFAULTS[p], ...cfg.providers[p] };
+  for (const p of Object.keys(cfg.providers))                // enc form on disk → plaintext in memory
+    cfg.providers[p].key = decKey(cfg.providers[p].key);
   return cfg;
 }
 
@@ -270,8 +292,12 @@ async function ollamaModels() {
 
 function crewSave(cfg) {
   try {
+    // encrypt provider keys before they touch the disk (never mutate the caller's object)
+    const out = { ...cfg, providers: {} };
+    for (const [p, v] of Object.entries(cfg.providers || {}))
+      out.providers[p] = { ...v, key: encKey(v.key) };
     fs.mkdirSync(fablize(), { recursive: true });
-    fs.writeFileSync(crewLocal(), JSON.stringify(cfg, null, 1) + "\n");
+    fs.writeFileSync(crewLocal(), JSON.stringify(out, null, 1) + "\n");
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message }; }
 }
