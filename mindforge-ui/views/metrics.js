@@ -30,8 +30,12 @@ window.Views.metrics = (() => {
         card(m.stories_started ?? 0, "сторей начато") +
         card(rate, "доля завершения", m.completion_rate >= 0.9 ? "teal" : m.completion_rate < 0.6 ? "red" : "") +
         card(m.escalations ?? 0, "эскалаций", m.escalations ? "red" : "");
+      const c = m.cost || {};
+      const mins = c.story_seconds ? Math.round(c.story_seconds / 60) : 0;
       if (strip) strip.innerHTML =
         `<span>агенты <b>${o.stories_ok ?? 0}/${(o.stories_ok ?? 0) + (o.stories_failed ?? 0)}</b></span>` +
+        `<span>время <b>${mins}м</b></span>` +
+        (c.story_cost_usd ? `<span>стоимость <b>$${c.story_cost_usd}</b></span>` : "") +
         `<span>факты <b>${b.net_facts ?? 0}</b></span>` +
         `<span>recall <b>${b.recalls ?? 0}</b></span>` +
         `<span>reflect <b>${b.reflects ?? 0}</b></span>`;

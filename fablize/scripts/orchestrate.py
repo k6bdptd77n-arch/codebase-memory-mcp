@@ -228,11 +228,42 @@ def run_story(plan, story, a):
         log("orchestrator_story", id=story["id"], rc=wtadd.returncode, stage="worktree")
         return story["id"], wtadd.returncode
     seed_agent_settings(wt)
+    t0 = time.monotonic()
     with open(logf, "w", encoding="utf-8") as out:
         rc = subprocess.run(cmd, cwd=str(wt), stdout=out, stderr=subprocess.STDOUT).returncode
-    print(f"{'✓' if rc == 0 else '✗'} {story['id']} agent exited rc={rc} — log: {logf}")
-    log("orchestrator_story", id=story["id"], rc=rc, stage="agent")
+    dur = round(time.monotonic() - t0, 1)
+    cost = _parse_cost(logf)  # best-effort: the CLI's JSON result carries usage when present
+    print(f"{'✓' if rc == 0 else '✗'} {story['id']} agent exited rc={rc} in {dur}s — log: {logf}")
+    log("orchestrator_story", id=story["id"], rc=rc, stage="agent", duration_s=dur, **cost)
     return story["id"], rc
+
+
+def _parse_cost(logf):
+    """Pull usage/cost from the agent log if the CLI emitted a JSON result line (claude
+    --output-format stream-json / codex). Best-effort — returns {} when nothing is found."""
+    try:
+        text = logf.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    out = {}
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if not (line.startswith("{") and ("cost" in line or "usage" in line)):
+            continue
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            continue
+        cost = obj.get("total_cost_usd") or obj.get("cost_usd")
+        if cost is not None:
+            out["cost_usd"] = float(cost)
+        u = obj.get("usage") or {}
+        toks = (u.get("input_tokens", 0) or 0) + (u.get("output_tokens", 0) or 0)
+        if toks:
+            out["tokens"] = toks
+        if out:
+            break
+    return out
 
 
 def cmd_plan(a):

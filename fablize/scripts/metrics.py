@@ -75,6 +75,13 @@ def summarize(events):
             "stories_ok": orch_ok,
             "stories_failed": len(orch_stories) - orch_ok,
         },
+        # Cost layer: how long / how much the worktree agents took. duration_s is always
+        # logged; cost_usd only when the agent CLI reported usage (best-effort).
+        "cost": {
+            "story_seconds": round(sum((e.get("duration_s") or 0) for e in orch_stories), 1),
+            "story_cost_usd": round(sum((e.get("cost_usd") or 0) for e in orch_stories), 4),
+            "stories_timed": sum(1 for e in orch_stories if e.get("duration_s")),
+        },
         # Brain layer (the third layer): is the persistent memory actually being used and growing?
         "brain": {
             "facts_saved": ev.get("fact_saved", 0),

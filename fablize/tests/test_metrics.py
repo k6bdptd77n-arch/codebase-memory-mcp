@@ -56,6 +56,19 @@ class MetricsProjectFilter(unittest.TestCase):
         got = metrics.read_events(project="/home/u/work/app")
         self.assertNotIn("checkpoint", [e["event"] for e in got])
 
+    def test_cost_block_aggregates_duration_and_cost(self):
+        evs = [
+            {"ts": "2026-06-01T10:00:00", "event": "orchestrator_story", "id": "G001", "rc": 0,
+             "duration_s": 12.5, "cost_usd": 0.03},
+            {"ts": "2026-06-01T10:05:00", "event": "orchestrator_story", "id": "G002", "rc": 0,
+             "duration_s": 7.5},  # no cost reported
+        ]
+        s = metrics.summarize(evs)
+        self.assertIn("cost", s)
+        self.assertEqual(s["cost"]["story_seconds"], 20.0)
+        self.assertEqual(s["cost"]["story_cost_usd"], 0.03)
+        self.assertEqual(s["cost"]["stories_timed"], 2)
+
     def test_events_without_cwd_excluded_when_filtering(self):
         got = metrics.read_events(project="/home/u")
         self.assertNotIn("recall", [e["event"] for e in got])

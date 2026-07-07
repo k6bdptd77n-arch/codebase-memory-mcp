@@ -174,6 +174,24 @@ def verify_cmd() -> str:
     return autodetect_verify()
 
 
+def over_budget() -> bool:
+    """Soft budget guard for unattended runs: stop before starting a new story if
+    MINDFORGE_BUDGET_USD is set and the day's spend (via imba's hermes-economizer) exceeds it.
+    A no-op when the cap is unset or the economizer isn't importable — never blocks by accident."""
+    cap = os.environ.get("MINDFORGE_BUDGET_USD")
+    if not cap:
+        return False
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "imba" / "hermes-economizer"))
+        import economizer as eco  # type: ignore
+        cfg = eco.load_config() if hasattr(eco, "load_config") else {}
+        if isinstance(cfg, dict):
+            cfg["budget_usd"] = float(cap)
+        return bool(eco.over_budget(cfg))
+    except Exception:
+        return False
+
+
 def cycle(dry_run: bool = False) -> None:
     """run → review → checkpoint/merge for every pending story; reflect at the end."""
     status = mt.goals_status()
@@ -184,6 +202,9 @@ def cycle(dry_run: bool = False) -> None:
         return
     results = []
     for sid in pending:
+        if not dry_run and over_budget():
+            print(f"cycle: budget cap (MINDFORGE_BUDGET_USD) reached — stopping before {sid}.")
+            break
         print(f"\n--- {sid}: running worktree agent…")
         if dry_run:
             print(f"[dry-run] would run_story({sid}), review, checkpoint, merge")
