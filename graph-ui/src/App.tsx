@@ -1,8 +1,15 @@
-import { useState } from "react";
-import { GraphTab } from "./components/GraphTab";
+import { lazy, Suspense, useState } from "react";
 import { StatsTab } from "./components/StatsTab";
 import { ControlTab } from "./components/ControlTab";
 import type { TabId } from "./lib/types";
+
+/* Three.js is only needed after the user opens a project graph. Keep it out of
+ * the initial dashboard payload so the projects/control views become usable
+ * without downloading the renderer first. */
+const GraphTab = lazy(async () => {
+  const module = await import("./components/GraphTab");
+  return { default: module.GraphTab };
+});
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "graph", label: "Graph" },
@@ -63,7 +70,9 @@ export function App() {
       {/* Content */}
       <main className="flex-1 min-h-0">
         {activeTab === "graph" ? (
-          <GraphTab project={selectedProject} />
+          <Suspense fallback={<GraphLoading />}>
+            <GraphTab project={selectedProject} />
+          </Suspense>
         ) : activeTab === "control" ? (
           <ControlTab />
         ) : (
@@ -75,6 +84,14 @@ export function App() {
           />
         )}
       </main>
+    </div>
+  );
+}
+
+function GraphLoading() {
+  return (
+    <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+      Loading graph renderer…
     </div>
   );
 }

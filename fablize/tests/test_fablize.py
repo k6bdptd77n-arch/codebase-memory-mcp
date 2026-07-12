@@ -231,13 +231,18 @@ class InstallTests(Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         disc = tgt / ".fablize-disciplines"
         self.assertTrue((disc / "hooks" / "brain_reflect.py").exists())
+        self.assertTrue((disc / "hooks" / "codex_reflect.py").exists())
         self.assertTrue((disc / "scripts" / "brain.py").exists())
+        self.assertTrue((tgt / ".agents" / "skills" / "mindforge-workflow" / "SKILL.md").exists())
         agents = (tgt / "AGENTS.md").read_text()
         self.assertIn(".fablize-disciplines/scripts/brain.py", agents)
         self.assertNotIn("` scripts/brain.py", agents)  # no un-rewritten in-repo path
         settings = json.loads(Path(self.tmp, ".claude", "settings.json").read_text())
         self.assertIn("destructive_guard.py", json.dumps(settings["hooks"]["PreToolUse"]))
         self.assertIn("brain_reflect.py", json.dumps(settings["hooks"]["Stop"]))
+        codex_hooks = json.loads((tgt / ".codex" / "hooks.json").read_text())
+        self.assertIn("codex_reflect.py", json.dumps(codex_hooks["hooks"]["UserPromptSubmit"]))
+        self.assertIn("codex_reflect.py", json.dumps(codex_hooks["hooks"]["Stop"]))
 
     def test_install_idempotent_and_self_healing(self):
         cl = Path(self.tmp, ".claude"); cl.mkdir(parents=True)
@@ -251,12 +256,26 @@ class InstallTests(Base):
         s = json.loads(Path(cl, "settings.json").read_text())
         self.assertEqual(len(s["hooks"]["Stop"]), 1)  # not piled up
         self.assertNotIn("/old/", json.dumps(s["hooks"]["Stop"]))  # stale path healed
+        codex = json.loads((tgt / ".codex" / "hooks.json").read_text())["hooks"]
+        self.assertEqual(sum("codex_reflect.py" in json.dumps(x) for x in codex["Stop"]), 1)
+        self.assertEqual(sum("codex_reflect.py" in json.dumps(x) for x in codex["UserPromptSubmit"]), 1)
 
     def test_install_warns_when_no_settings(self):
         # fresh machine: no ~/.claude/settings.json → must NOT claim success on wiring
         tgt = Path(self.tmp) / "proj"; tgt.mkdir()
         r = self._install(str(tgt))
         self.assertIn("NOT wired", r.stdout)
+
+    def test_install_fails_when_existing_settings_cannot_be_updated(self):
+        cl = Path(self.tmp, ".claude")
+        cl.mkdir(parents=True)
+        Path(cl, "settings.json").write_text("not-json", encoding="utf-8")
+        tgt = Path(self.tmp) / "proj"
+        tgt.mkdir()
+        r = self._install(str(tgt))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("NOT wired", r.stdout)
+        self.assertNotIn("Done.", r.stdout)
 
 
 class BundleTests(Base):

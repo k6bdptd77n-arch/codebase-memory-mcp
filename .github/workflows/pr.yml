@@ -35,10 +35,37 @@ jobs:
       # dry runs and releases where a flaky red does not block a merge.
       skip_perf: true
 
+  ui:
+    name: UI validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            graph-ui/package-lock.json
+            mindforge-ui/package-lock.json
+      - name: Test and build Graph UI
+        working-directory: graph-ui
+        run: |
+          npm ci
+          npm test
+          npm run build
+          npm run check:bundle
+      - name: Validate MindForge desktop sources
+        working-directory: mindforge-ui
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run check
+
   ci-ok:
     # The one required context (besides dco) — fails unless every PR stage
     # succeeded, so matrix renames can never silently deadlock merges.
-    needs: [security, lint, test]
+    needs: [security, lint, test, ui]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -4,17 +4,52 @@
 // the integrated PTY terminal, and live refresh on every .fablize change.
 
 // ── tabs ─────────────────────────────────────────────────────────────────────
-for (const tab of document.querySelectorAll(".tab")) {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
-    tab.classList.add("active");
-    document.getElementById(`view-${tab.dataset.tab}`).classList.add("active");
-    if (tab.dataset.tab === "terminal") setTimeout(() => { fit.fit(); term.focus(); }, 30);
-    const view = window.Views[tab.dataset.tab];
-    if (view && view.refresh) view.refresh();
+const TAB_IDS = ["board", "plan", "brain", "metrics", "settings", "terminal"];
+const SHORTCUT_MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
+document.querySelector(".palette-trigger kbd").textContent = `${SHORTCUT_MOD}K`;
+document.querySelectorAll(".tab-key").forEach((key, i) => {
+  key.textContent = `${SHORTCUT_MOD}${i + 1}`;
+});
+
+function activateTab(tabId, { persist = true, focus = false } = {}) {
+  if (!TAB_IDS.includes(tabId)) return;
+  const next = document.querySelector(`.tab[data-tab="${tabId}"]`);
+  if (!next) return;
+
+  document.querySelectorAll(".tab").forEach((tab) => {
+    const active = tab === next;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
+    tab.tabIndex = active ? 0 : -1;
   });
+  document.querySelectorAll(".view").forEach((view) => {
+    const active = view.id === `view-${tabId}`;
+    view.classList.toggle("active", active);
+    view.setAttribute("aria-hidden", String(!active));
+  });
+
+  if (persist) localStorage.setItem("mf-active-tab", tabId);
+  if (focus) next.focus();
+  if (tabId === "terminal") setTimeout(() => { fit.fit(); term.focus(); }, 30);
+  const view = window.Views[tabId];
+  if (view && view.refresh) view.refresh();
 }
+
+for (const tab of document.querySelectorAll(".tab"))
+  tab.addEventListener("click", () => activateTab(tab.dataset.tab));
+
+document.getElementById("tabs").addEventListener("keydown", (e) => {
+  const current = TAB_IDS.indexOf(document.activeElement?.dataset?.tab);
+  if (current < 0) return;
+  let next = current;
+  if (e.key === "ArrowDown" || e.key === "ArrowRight") next = (current + 1) % TAB_IDS.length;
+  else if (e.key === "ArrowUp" || e.key === "ArrowLeft") next = (current - 1 + TAB_IDS.length) % TAB_IDS.length;
+  else if (e.key === "Home") next = 0;
+  else if (e.key === "End") next = TAB_IDS.length - 1;
+  else return;
+  e.preventDefault();
+  activateTab(TAB_IDS[next], { focus: true });
+});
 
 // ── integrated terminal (real PTY) ───────────────────────────────────────────
 const term = new Terminal({
@@ -53,8 +88,18 @@ async function refreshLayers() {
   } catch { /* keep the last rendered state */ }
 }
 
-// ── "Открыть 3D-граф" — statusbar action (URL is hardcoded in main) ──────────
-document.getElementById("open-graph").addEventListener("click", () => window.mf.openGraph());
+// ── "Открыть 3D-граф" — main starts/reuses the local server, then opens it ──
+document.getElementById("open-graph").addEventListener("click", async () => {
+  const button = document.getElementById("open-graph");
+  const note = document.getElementById("tm-note");
+  button.disabled = true;
+  note.textContent = "запускаю 3D-граф…";
+  try {
+    const result = await window.mf.openGraph();
+    note.textContent = result?.ok ? "3D-граф открыт" : (result?.error || "3D-граф недоступен");
+  } catch { note.textContent = "не удалось запустить 3D-граф"; }
+  finally { button.disabled = false; }
+});
 
 // ── "↻ индекс" — reindex the current project into the C memory engine ─────────
 document.getElementById("reindex").addEventListener("click", async () => {
@@ -82,6 +127,8 @@ function buildProjMenu(info) {
   const item = (label, fn, cls = "") => {
     const b = document.createElement("button");
     b.className = "proj-item " + cls;
+    b.type = "button";
+    b.setAttribute("role", "menuitem");
     b.textContent = label;
     b.addEventListener("click", () => { hideProjMenu(); fn(); });
     projMenu.appendChild(b);
@@ -99,8 +146,32 @@ function buildProjMenu(info) {
   item("Новый проект…", () => showProjModal());
 }
 
-function hideProjMenu() { projMenu.classList.add("hidden"); }
-projBtn.addEventListener("click", (e) => { e.stopPropagation(); projMenu.classList.toggle("hidden"); });
+function hideProjMenu({ focus = false } = {}) {
+  projMenu.classList.add("hidden");
+  projBtn.setAttribute("aria-expanded", "false");
+  if (focus) projBtn.focus();
+}
+function showProjMenu({ focusFirst = false } = {}) {
+  projMenu.classList.remove("hidden");
+  projBtn.setAttribute("aria-expanded", "true");
+  if (focusFirst) projMenu.querySelector("button")?.focus();
+}
+projBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (projMenu.classList.contains("hidden")) showProjMenu(); else hideProjMenu();
+});
+projBtn.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { e.preventDefault(); showProjMenu({ focusFirst: true }); }
+});
+projMenu.addEventListener("keydown", (e) => {
+  const items = [...projMenu.querySelectorAll("button")];
+  const current = items.indexOf(document.activeElement);
+  if (e.key === "Escape") { e.preventDefault(); hideProjMenu({ focus: true }); return; }
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  e.preventDefault();
+  const direction = e.key === "ArrowDown" ? 1 : -1;
+  items[(current + direction + items.length) % items.length]?.focus();
+});
 document.addEventListener("click", (e) => { if (!projMenu.contains(e.target)) hideProjMenu(); });
 
 // ── new-project modal (name only; the parent folder is a native dialog in main) ──
@@ -111,9 +182,14 @@ function showProjModal() {
   projErr.classList.add("hidden");
   projName.value = "";
   projModal.classList.remove("hidden");
+  projModal.setAttribute("aria-hidden", "false");
   projName.focus();
 }
-function hideProjModal() { projModal.classList.add("hidden"); }
+function hideProjModal() {
+  projModal.classList.add("hidden");
+  projModal.setAttribute("aria-hidden", "true");
+  projBtn.focus();
+}
 document.getElementById("proj-create-cancel").addEventListener("click", hideProjModal);
 projModal.addEventListener("click", (e) => { if (e.target === projModal) hideProjModal(); });
 async function submitProjCreate() {
@@ -163,7 +239,10 @@ let mfMode = (() => {
 })();
 window.mfMode = () => mfMode;
 function paintMode() {
-  for (const m of MODES) modeBtns[m].classList.toggle("on", m === mfMode);
+  for (const m of MODES) {
+    modeBtns[m].classList.toggle("on", m === mfMode);
+    modeBtns[m].setAttribute("aria-pressed", String(m === mfMode));
+  }
   ap.checked = mfMode === "auto";                                 // board.js читает это как "полный автопилот"
 }
 function setMode(mode) {
@@ -178,13 +257,13 @@ paintMode();
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   const palette = document.getElementById("palette");
-  if (!palette.classList.contains("hidden")) { palette.classList.add("hidden"); return; }
+  if (!palette.classList.contains("hidden")) { closePalette(); return; }
   const modal = document.getElementById("proj-modal");
-  if (!modal.classList.contains("hidden")) { modal.classList.add("hidden"); return; }
+  if (!modal.classList.contains("hidden")) { hideProjModal(); return; }
   if (!quickModal.classList.contains("hidden")) { hideQuick(); return; }
   const drawer = document.getElementById("drawer");
   if (!drawer.classList.contains("hidden")) { document.getElementById("drawer-close").click(); return; }
-  document.getElementById("proj-menu").classList.add("hidden");
+  hideProjMenu({ focus: true });
 });
 
 // ── быстрая задача: одно поручение → интерактивный claude в PTY проекта ──────
@@ -192,8 +271,17 @@ document.addEventListener("keydown", (e) => {
 // но в папке проекта и с его дисциплинами (AGENTS.md агент подхватывает сам).
 const quickModal = document.getElementById("quick-modal");
 const quickInput = document.getElementById("quick-input");
-function showQuick() { quickInput.value = ""; quickModal.classList.remove("hidden"); quickInput.focus(); }
-function hideQuick() { quickModal.classList.add("hidden"); }
+function showQuick() {
+  quickInput.value = "";
+  quickModal.classList.remove("hidden");
+  quickModal.setAttribute("aria-hidden", "false");
+  quickInput.focus();
+}
+function hideQuick() {
+  quickModal.classList.add("hidden");
+  quickModal.setAttribute("aria-hidden", "true");
+  document.getElementById("quick-btn").focus();
+}
 function quickGo() {
   const text = quickInput.value.trim();
   if (!text) return;
@@ -217,8 +305,8 @@ const palList = document.getElementById("palette-list");
 let palItems = [], palSel = 0;
 
 function buildActions(stories) {
-  const tab = (name, label) => ({ label, k: "вкладка",
-    run: () => document.querySelector(`.tab[data-tab="${name}"]`).click() });
+  const tab = (name, label) => ({ label, k: `${SHORTCUT_MOD}${TAB_IDS.indexOf(name) + 1}`,
+    run: () => activateTab(name, { focus: true }) });
   const acts = [
     tab("board", "Доска"), tab("plan", "План"), tab("brain", "Мозг"),
     tab("metrics", "Метрики"), tab("settings", "Настройки"), tab("terminal", "Терминал"),
@@ -268,30 +356,61 @@ function setPalSel(i) {
 }
 function runPal(i) {
   const a = palItems[i];
-  palette.classList.add("hidden");
+  closePalette();
   if (a) try { a.run(); } catch {}
 }
 let baseActions = [];
+function closePalette(restoreFocus = true) {
+  palette.classList.add("hidden");
+  palette.setAttribute("aria-hidden", "true");
+  const trigger = document.getElementById("palette-btn");
+  trigger.setAttribute("aria-expanded", "false");
+  if (restoreFocus) trigger.focus();
+}
 async function openPalette() {
   let stories = [];
   try { const s = await window.mf.snapshot(); if (s && s.goals) stories = s.goals.goals; } catch {}
   baseActions = buildActions(stories);
   palette.classList.remove("hidden");
+  palette.setAttribute("aria-hidden", "false");
+  document.getElementById("palette-btn").setAttribute("aria-expanded", "true");
   palInput.value = "";
   renderPal("");
   palInput.focus();
 }
+document.getElementById("palette-btn").addEventListener("click", openPalette);
 palInput.addEventListener("input", () => renderPal(palInput.value));
 palInput.addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown") { e.preventDefault(); setPalSel(Math.min(palSel + 1, palItems.length - 1)); }
   else if (e.key === "ArrowUp") { e.preventDefault(); setPalSel(Math.max(palSel - 1, 0)); }
   else if (e.key === "Enter") { e.preventDefault(); runPal(palSel); }
 });
-palette.addEventListener("click", (e) => { if (e.target === palette) palette.classList.add("hidden"); });
+palette.addEventListener("click", (e) => { if (e.target === palette) closePalette(); });
+
+// Keep keyboard focus inside the active dialog. This prevents Tab from moving
+// into controls hidden behind the modal overlay.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab") return;
+  const layer = [palette, projModal, quickModal].find((el) => !el.classList.contains("hidden"));
+  if (!layer) return;
+  const focusable = [...layer.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')];
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (e.shiftKey && (document.activeElement === first || !layer.contains(document.activeElement))) {
+    e.preventDefault(); last.focus();
+  } else if (!e.shiftKey && (document.activeElement === last || !layer.contains(document.activeElement))) {
+    e.preventDefault(); first.focus();
+  }
+});
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
-    if (palette.classList.contains("hidden")) openPalette(); else palette.classList.add("hidden");
+    if (palette.classList.contains("hidden")) openPalette(); else closePalette();
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && /^[1-6]$/.test(e.key)) {
+    e.preventDefault();
+    activateTab(TAB_IDS[Number(e.key) - 1], { focus: true });
   }
 });
 
@@ -308,11 +427,25 @@ setInterval(() => {
     const missing = [];
     if (!p.claude) missing.push("claude CLI не найден в PATH — установите Claude Code и перезапустите MindForge");
     if (!p.git) missing.push("git не найден в PATH");
-    if (!p.engineBuilt) missing.push("движок памяти не собран — запустите install-combined.sh (или scripts/build.sh)");
+    if (!p.engineBuilt) missing.push(p.packaged
+      ? "движок памяти отсутствует в установленной сборке — переустановите MindForge"
+      : "движок памяти не собран");
     if (!missing.length) return;
     const banner = document.getElementById("preflight-banner");
     document.getElementById("preflight-text").textContent = "⚠ " + missing.join(" · ");
     banner.classList.remove("hidden");
+    if (!p.engineBuilt && !p.packaged) {
+      const action = document.getElementById("preflight-action");
+      action.classList.remove("hidden");
+      action.addEventListener("click", () => {
+        action.disabled = true;
+        action.textContent = "Команда готова";
+        activateTab("terminal", { focus: true });
+        const installDir = String(p.installDir || "").replace(/'/g, "'\\''");
+        setTimeout(() => window.mf.ptyInput(`cd '${installDir}' && ./install-combined.sh --with-ui`), 120);
+        document.getElementById("tm-note").textContent = "команда подготовлена — нажмите Enter";
+      }, { once: true });
+    }
     document.getElementById("preflight-dismiss").addEventListener("click",
       () => banner.classList.add("hidden"), { once: true });
   } catch {}
@@ -320,6 +453,8 @@ setInterval(() => {
 
 // ── boot + live refresh ──────────────────────────────────────────────────────
 for (const v of Object.values(window.Views)) v.init();
+const restoredTab = localStorage.getItem("mf-active-tab");
+if (TAB_IDS.includes(restoredTab)) activateTab(restoredTab, { persist: false });
 refreshLayers();
 window.mf.onChanged(() => {
   window.Views.board.refresh();

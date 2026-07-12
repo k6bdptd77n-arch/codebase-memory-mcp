@@ -19,9 +19,10 @@ window.I18N = (() => {
       "plan.describe": "Describe the feature",
       "plan.placeholder": "What needs to be built? The planner reads the project's memory first, then splits the task into 1-4 stories with disjoint files.",
       "plan.go": "Plan it", "plan.thinking": "Planner's thinking",
+      "plan.streamHint": "The planning trace and the planner's decisions will appear here.",
       "plan.preview": "Proposed stories — review before accepting",
       "plan.accept": "Accept → new plan", "plan.append": "Append to current", "plan.discard": "Discard",
-      "brain.ask": "ask the project's memory…", "brain.recall": "Recall", "brain.prune": "Prune stale…",
+      "brain.ask": "ask the project's memory…", "brain.recall": "Recall", "brain.prune": "Clean up stale",
       "brain.facts": "Facts", "brain.episodes": "Episodes — how past tasks ended",
       "metrics.spec": "Locked spec", "metrics.ledger": "Ledger — recent events",
       "settings.crew": "Crew", "settings.models": "Models & providers", "settings.mcp": "MCP servers",
@@ -49,9 +50,10 @@ window.I18N = (() => {
       "plan.describe": "Опишите фичу",
       "plan.placeholder": "Что нужно построить? Планировщик сначала прочитает память проекта, затем разложит задачу на 1–4 стори с непересекающимися файлами.",
       "plan.go": "Спланировать", "plan.thinking": "Мышление планировщика",
+      "plan.streamHint": "Здесь появятся ход планирования и решения планировщика.",
       "plan.preview": "Предложенные стори — проверьте перед принятием",
       "plan.accept": "Принять → новый план", "plan.append": "Добавить к текущему", "plan.discard": "Отклонить",
-      "brain.ask": "спросить память проекта…", "brain.recall": "Вспомнить", "brain.prune": "Почистить протухшее…",
+      "brain.ask": "спросить память проекта…", "brain.recall": "Вспомнить", "brain.prune": "Очистить старые",
       "brain.facts": "Факты", "brain.episodes": "Эпизоды — чем закончились прошлые задачи",
       "metrics.spec": "Залоченная спека", "metrics.ledger": "Леджер — последние события",
       "settings.crew": "Экипаж", "settings.models": "Модели и провайдеры", "settings.mcp": "MCP-серверы",
@@ -79,6 +81,10 @@ window.I18N = (() => {
     for (const el of document.querySelectorAll("[data-i18n-ph]")) {
       const key = el.getAttribute("data-i18n-ph");
       el.setAttribute("placeholder", t(key));
+    }
+    for (const el of document.querySelectorAll("[data-i18n-empty]")) {
+      const key = el.getAttribute("data-i18n-empty");
+      el.setAttribute("data-empty", t(key));
     }
     document.documentElement.lang = locale;
   }

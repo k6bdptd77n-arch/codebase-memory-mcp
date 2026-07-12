@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BRAIN = str(ROOT / "scripts" / "brain.py")
 METRICS = str(ROOT / "scripts" / "metrics.py")
 REFLECT_HOOK = str(ROOT / "hooks" / "brain_reflect.py")
+CODEX_REFLECT_HOOK = str(ROOT / "hooks" / "codex_reflect.py")
 
 
 class Base(unittest.TestCase):
@@ -371,6 +372,23 @@ class BrainMetricsTests(Base):
         h = self.metrics()
         self.assertIn("brain (3rd layer)", h.stdout)
 
+    def test_metrics_subtract_pruned_facts_from_net_total(self):
+        events = [
+            {"event": "fact_saved"},
+            {"event": "fact_saved"},
+            {"event": "facts_pruned"},
+        ]
+        event_dir = Path(self.tmp, ".fablize")
+        event_dir.mkdir()
+        Path(event_dir, "events.jsonl").write_text(
+            "".join(json.dumps(event) + "\n" for event in events), encoding="utf-8"
+        )
+        result = self.metrics("--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        brain = json.loads(result.stdout)["brain"]
+        self.assertEqual(brain["facts_pruned"], 1)
+        self.assertEqual(brain["net_facts"], 1)
+
     def test_metrics_no_brain_line_when_idle(self):
         # only a spec/goals-free, brain-free env → brain block stays zero, no brain line printed
         r = self.metrics()
@@ -394,6 +412,31 @@ class AutoReflectHookTests(Base):
     def hook(self, payload):
         return subprocess.run([sys.executable, REFLECT_HOOK], cwd=str(self.repo), env=self.env,
                               input=json.dumps(payload), capture_output=True, text=True)
+
+    def codex_hook(self, payload):
+        return subprocess.run([sys.executable, CODEX_REFLECT_HOOK], cwd=str(self.repo), env=self.env,
+                              input=json.dumps(payload), capture_output=True, text=True)
+
+    def test_codex_prompt_and_stop_roundtrip(self):
+        prompt = {"hook_event_name": "UserPromptSubmit", "session_id": "codex-1",
+                  "turn_id": "t1", "cwd": str(self.repo),
+                  "prompt": "fix the authentication retry loop"}
+        r = self.codex_hook(prompt)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        state = self.repo / ".fablize" / ".sessions" / "codex-codex-1.json"
+        self.assertTrue(state.exists())
+        self.assertEqual(state.stat().st_mode & 0o777, 0o600)
+
+        stop = {"hook_event_name": "Stop", "session_id": "codex-1", "turn_id": "t1",
+                "cwd": str(self.repo), "transcript_path": None,
+                "last_assistant_message": "Implemented and tests pass.",
+                "stop_hook_active": False}
+        r = self.codex_hook(stop)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(state.exists())
+        rec = json.loads((self.repo / ".fablize" / "traces.jsonl").read_text().splitlines()[-1])
+        self.assertEqual(rec["goal"], "fix the authentication retry loop")
+        self.assertEqual(rec["result"], "Implemented and tests pass.")
 
     def test_records_factual_trace(self):
         r = self.hook({"session_id": "s1", "transcript_path": self._transcript(),

@@ -71,6 +71,7 @@ def state_root(base="."):
 
 EDIT_TOOLS = {"Edit", "Write", "NotebookEdit"}
 MAX_GOAL = 200
+MAX_RESULT = 1000
 
 
 def now():
@@ -125,20 +126,19 @@ def scan_transcript(path):
     return goal, tools, files
 
 
-def main():
-    try:
-        payload = json.load(sys.stdin)
-    except (ValueError, OSError):
-        sys.exit(0)
-    if not isinstance(payload, dict):  # malformed payload — do not interfere
-        sys.exit(0)
+def record_payload(payload):
+    """Record one agent-neutral Stop payload. Return True when a trace was stored."""
+    if not isinstance(payload, dict):
+        return False
     if payload.get("stop_hook_active"):  # re-entrant stop — never loop
-        sys.exit(0)
+        return False
     transcript = payload.get("transcript_path", "")
     cwd = payload.get("cwd") or str(Path.cwd())
     goal, tools, files = scan_transcript(transcript)
+    if not goal:
+        goal = str(payload.get("prompt") or "").strip()[:MAX_GOAL]
     if not (goal or tools or files):
-        sys.exit(0)  # nothing worth recording (e.g. a trivial exchange)
+        return False  # nothing worth recording (e.g. a trivial exchange)
 
     rec = {
         "ts": now(),
@@ -149,6 +149,9 @@ def main():
         "files": files,
         "lesson": "",  # deliberately empty — the model distills this, not the hook
     }
+    result = str(payload.get("last_assistant_message") or "").strip()
+    if result:
+        rec["result"] = result[:MAX_RESULT]
     try:
         d = state_root(cwd) / ".fablize"
         d.mkdir(parents=True, exist_ok=True)
@@ -182,6 +185,15 @@ def main():
                                     "auto": True, "cwd": cwd}, ensure_ascii=False) + "\n")
     except OSError:
         pass  # never let a write failure surface as a session error
+    return True
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, OSError):
+        sys.exit(0)
+    record_payload(payload)
     sys.exit(0)
 
 

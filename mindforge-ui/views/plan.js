@@ -38,33 +38,47 @@ window.Views.plan = (() => {
     $("plan-live").classList.add("on");
     $("plan-stream").textContent = "";
     $("plan-preview").classList.add("hidden");
-    const r = await window.mf.planGenerate(feature);
-    $("plan-go").disabled = false;
-    $("plan-live").classList.remove("on");
-    if (!r.ok) { $("plan-status").textContent = r.error; return; }
-    proposed = r.stories;
-    $("plan-status").textContent = `предложено сторей: ${proposed.length}`;
-    const ol = $("plan-stories");
-    ol.innerHTML = "";
-    for (const s of proposed) {
-      const [t, o] = [s.split("::")[0], s.split("::").slice(1).join("::")];
-      const li = document.createElement("li");
-      li.innerHTML = `<div class="st-title">${esc(t)}</div><div class="st-obj">${esc(o)}</div>`;
-      ol.appendChild(li);
+    try {
+      const r = await window.mf.planGenerate(feature);
+      if (!r.ok) { $("plan-status").textContent = r.error || "не удалось построить план"; return; }
+      proposed = r.stories;
+      $("plan-status").textContent = `предложено сторей: ${proposed.length}`;
+      const ol = $("plan-stories");
+      ol.innerHTML = "";
+      for (const s of proposed) {
+        const [t, o] = [s.split("::")[0], s.split("::").slice(1).join("::")];
+        const li = document.createElement("li");
+        li.innerHTML = `<div class="st-title">${esc(t)}</div><div class="st-obj">${esc(o)}</div>`;
+        ol.appendChild(li);
+      }
+      $("plan-preview").classList.remove("hidden");
+    } catch {
+      $("plan-status").textContent = "планировщик не ответил — попробуйте ещё раз";
+    } finally {
+      $("plan-go").disabled = false;
+      $("plan-live").classList.remove("on");
     }
-    $("plan-preview").classList.remove("hidden");
   }
 
   async function accept(mode) {
     if (!proposed) return;
     if (mode === "create" && !(await window.mf.confirm("Заменить план",
       "Создаёт НОВЫЙ план полёта (текущий будет заменён). Существующие worktree не трогаются."))) return;
-    const r = await window.mf.planAccept(feature.slice(0, 90), proposed, mode);
-    $("plan-status").textContent = (r.out || r.err || "").split("\n")[0];
-    proposed = null;
-    $("plan-preview").classList.add("hidden");
-    window.Views.board.refresh();
-    document.querySelector('.tab[data-tab="board"]').click();
+    const buttons = [$("plan-accept"), $("plan-append"), $("plan-discard")];
+    buttons.forEach((button) => { button.disabled = true; });
+    try {
+      const r = await window.mf.planAccept(feature.slice(0, 90), proposed, mode);
+      $("plan-status").textContent = (r.out || r.err || r.error || "").split("\n")[0];
+      if (!r.ok) return;
+      proposed = null;
+      $("plan-preview").classList.add("hidden");
+      window.Views.board.refresh();
+      document.querySelector('.tab[data-tab="board"]').click();
+    } catch {
+      $("plan-status").textContent = "не удалось сохранить план — предложение оставлено на экране";
+    } finally {
+      buttons.forEach((button) => { button.disabled = false; });
+    }
   }
 
   function init() {
@@ -72,6 +86,9 @@ window.Views.plan = (() => {
     for (const chip of document.querySelectorAll(".plan-examples .ex-chip"))
       chip.addEventListener("click", () => { const t = $("plan-input"); t.value = chip.textContent; t.focus(); });
     $("plan-go").addEventListener("click", go);
+    $("plan-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); go(); }
+    });
     $("plan-accept").addEventListener("click", () => accept("create"));
     $("plan-append").addEventListener("click", () => accept("add"));
     $("plan-discard").addEventListener("click", () => { proposed = null; $("plan-preview").classList.add("hidden"); });

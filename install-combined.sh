@@ -56,8 +56,12 @@ echo "=== MindForge — combined install ==="
 
 # --- Core layers -------------------------------------------------------------
 
-# 1. Memory layer: build the binary if it isn't there yet.
-if [ ! -x "$BIN" ]; then
+# 1. Memory layer: GUI installs need the embedded graph variant; rebuild it even
+# when a standard binary already exists, otherwise the 3D-graph action can only 404.
+if [ "$WITH_UI" = "1" ]; then
+  echo "[core 1/3] Building the memory engine with embedded 3D UI..."
+  "$ROOT/scripts/build.sh" --with-ui
+elif [ ! -x "$BIN" ]; then
   echo "[core 1/3] Building the memory engine (codebase-memory-mcp)..."
   "$ROOT/scripts/build.sh"
 else

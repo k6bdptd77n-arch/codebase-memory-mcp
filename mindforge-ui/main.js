@@ -16,6 +16,9 @@ const SCRIPTS = path.join(INSTALL, "fablize", "scripts");
 const BIN = path.join(INSTALL, "build", "c", "codebase-memory-mcp");
 const SHOT = process.argv.includes("--shot");
 const { okProjectName, createProjectAt, checkStoriesInProject } = require("./projectcore");
+const { apiChatRequest } = require("./providercore");
+const { createGraphSupervisor } = require("./graphcore");
+const { atomicWriteFileSync } = require("./filecore");
 
 // A GUI launched from Finder/Dock inherits a truncated PATH (often just /usr/bin:/bin), so
 // bare `python3` / `git` / `claude` / `node` fail to spawn. Append the usual install dirs once
@@ -37,6 +40,7 @@ const fablize = () => path.join(projectDir, ".fablize");
 
 let win = null;
 let term = null;
+let graphSupervisor = null;
 const running = new Map();                                  // story id → { child, started }
 
 // --- helpers -----------------------------------------------------------------
@@ -253,16 +257,13 @@ function crewLoad() {
 // text-in/text-out — any OpenAI-compatible endpoint can serve them.
 async function apiChat(provider, model, prompt) {
   const p = crewLoad().providers[provider] || {};
-  const url = (p.base || PROVIDER_DEFAULTS[provider].base).replace(/\/$/, "") + "/v1/chat/completions";
-  const headers = { "Content-Type": "application/json" };
-  if (provider !== "ollama") headers.Authorization = "Bearer " + (p.key || "");
-  try {
-    const res = await fetch(url, { method: "POST", headers,
-      body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }] }) });
-    const j = await res.json();
-    const out = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
-    return { ok: res.ok && !!out, out: out || (j.error && j.error.message) || JSON.stringify(j).slice(0, 400) };
-  } catch (e) { return { ok: false, out: `${provider}: ${e.message}` }; }
+  return apiChatRequest({
+    provider,
+    model,
+    prompt,
+    base: p.base || PROVIDER_DEFAULTS[provider].base,
+    apiKey: provider === "ollama" ? "" : p.key,
+  });
 }
 
 // role → answer, via an external provider (model "provider/name") or claude -p
@@ -297,8 +298,7 @@ function crewSave(cfg) {
     const out = { ...cfg, providers: {} };
     for (const [p, v] of Object.entries(cfg.providers || {}))
       out.providers[p] = { ...v, key: encKey(v.key) };
-    fs.mkdirSync(fablize(), { recursive: true });
-    fs.writeFileSync(crewLocal(), JSON.stringify(out, null, 1) + "\n");
+    atomicWriteFileSync(crewLocal(), JSON.stringify(out, null, 1) + "\n");
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message }; }
 }
@@ -491,11 +491,11 @@ function writeReceipt(id, { verdict, evidence, verifyCmd, verifyEvidence, mode }
     const ts = new Date().toISOString();
     const rec = { id, merged_at: ts, mode, verdict: (verdict || "").trim(),
       verify_cmd: verifyCmd || "", verify_evidence: verifyEvidence || "", evidence: evidence || "" };
-    fs.writeFileSync(path.join(d, `${id}.json`), JSON.stringify(rec, null, 1) + "\n");
+    atomicWriteFileSync(path.join(d, `${id}.json`), JSON.stringify(rec, null, 1) + "\n");
     const md = `# Receipt — ${id}\n\n- Merged: ${ts}\n- Mode: ${mode}\n\n` +
       `## Verdict\n${rec.verdict}\n\n## Verify gate\n\`${rec.verify_cmd || "(none — review-only)"}\`\n${rec.verify_evidence}\n\n` +
       `## Evidence\n\`\`\`\n${rec.evidence}\n\`\`\`\n`;
-    fs.writeFileSync(path.join(d, `${id}.md`), md);
+    atomicWriteFileSync(path.join(d, `${id}.md`), md);
   } catch {}  // a receipt-write failure must never block the merge that already happened
 }
 
@@ -545,8 +545,7 @@ const loadPrefs = () => {
 };
 function savePrefs(p) {
   try {
-    fs.mkdirSync(path.dirname(prefsPath()), { recursive: true });
-    fs.writeFileSync(prefsPath(), JSON.stringify(p, null, 1) + "\n");
+    atomicWriteFileSync(prefsPath(), JSON.stringify(p, null, 1) + "\n");
   } catch {}
 }
 const recentsList = () => {
@@ -598,8 +597,14 @@ function switchProject(dir, persist = true) {
 }
 
 function createWindow() {
+  if (!graphSupervisor) graphSupervisor = createGraphSupervisor({
+    binPath: BIN,
+    cwd: INSTALL,
+    openExternal: (url) => shell.openExternal(url),
+  });
   win = new BrowserWindow({
-    width: 1560, height: 940, backgroundColor: "#070B16", show: !SHOT,
+    width: 1560, height: 940, minWidth: 860, minHeight: 620,
+    backgroundColor: "#070B16", show: !SHOT,
     title: "MindForge Control", titleBarStyle: "hiddenInset",
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true,
       nodeIntegration: false, sandbox: true },
@@ -705,8 +710,9 @@ function createWindow() {
     return { claude, engineBuilt, git, installDir: INSTALL, packaged: app.isPackaged };
   });
 
-  // 3D-graph viewer — URL is hardcoded here; never openExternal a renderer-supplied URL
-  ipcMain.handle("open-graph", () => { shell.openExternal("http://localhost:9749"); return true; });
+  // 3D-graph viewer — start/reuse the bundled local UI server before opening it.
+  // URL and process args are fixed in main; the renderer cannot supply either.
+  ipcMain.handle("open-graph", () => graphSupervisor.open());
 
   // projects: the renderer NEVER supplies a path — it can only trigger a native
   // dialog, pick an index from the persisted recents, or submit a validated name.
@@ -792,6 +798,22 @@ function createWindow() {
           }
         }
       }
+      await win.webContents.executeJavaScript("document.getElementById('palette-btn').click()");
+      await new Promise((r) => setTimeout(r, 700));
+      const paletteImg = await win.webContents.capturePage();
+      fs.writeFileSync("/tmp/mindforge_palette.png", paletteImg.toPNG());
+      await win.webContents.executeJavaScript("document.getElementById('palette').click()");
+      // Responsive regression pass: these screenshots exercise both compact
+      // breakpoints and make clipped/overlapping controls visible during review.
+      win.setSize(900, 650);
+      await new Promise((r) => setTimeout(r, 700));
+      for (const tab of ["board", "plan", "brain", "settings"]) {
+        await win.webContents.executeJavaScript(
+          `document.querySelector('.tab[data-tab="${tab}"]').click()`);
+        await new Promise((r) => setTimeout(r, 500));
+        const img = await win.webContents.capturePage();
+        fs.writeFileSync(`/tmp/mindforge_compact_${tab}.png`, img.toPNG());
+      }
       app.quit();
     });
   }
@@ -824,4 +846,5 @@ app.whenReady().then(async () => {
   }
   createWindow();
 });
+app.on("before-quit", () => graphSupervisor?.stop());
 app.on("window-all-closed", () => app.quit());

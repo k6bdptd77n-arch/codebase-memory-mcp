@@ -8,7 +8,16 @@ window.Views.brain = (() => {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   async function refresh() {
-    const facts = await window.mf.brainFacts();
+    let facts, eps;
+    try {
+      [facts, eps] = await Promise.all([window.mf.brainFacts(), window.mf.episodes()]);
+    } catch {
+      if (!$("facts").children.length)
+        $("facts").innerHTML = '<div class="pal-empty">Память временно недоступна. Переключитесь на вкладку ещё раз, чтобы повторить.</div>';
+      if (!$("episode-list").children.length)
+        $("episode-list").innerHTML = '<div class="pal-empty">Не удалось загрузить историю.</div>';
+      return;
+    }
     $("brain-count").textContent = `· ${facts.length}`;
     const box = $("facts");
     box.innerHTML = "";
@@ -17,6 +26,7 @@ window.Views.brain = (() => {
     for (const f of facts) {
       const el = document.createElement("div");
       el.className = "fact";
+      el.title = "Нажмите, чтобы раскрыть факт";
       // человеку показываем смысл (description), а не kebab-слаг — слаг уходит в подпись
       const title = (f.description || f.body || f.name || "").trim();
       el.innerHTML = `
@@ -32,7 +42,6 @@ window.Views.brain = (() => {
       box.appendChild(el);
     }
 
-    const eps = await window.mf.episodes();
     const list = $("episode-list");
     list.innerHTML = "";
     let lastDay = "";
@@ -47,6 +56,7 @@ window.Views.brain = (() => {
       }
       const el = document.createElement("div");
       el.className = "episode";
+      el.title = "Нажмите, чтобы раскрыть эпизод";
       const goal = e.goal || e.trace || "";
       const out = e.lesson || e.result || (e.tools ? Object.keys(e.tools).join(" · ") : "");
       // без JS-обрезки: CSS клампит одной строкой, клик по эпизоду раскрывает полностью
@@ -71,22 +81,41 @@ window.Views.brain = (() => {
     const q = $("brain-q").value.trim();
     if (!q) return;
     const out = $("brain-recall-out");
+    const button = $("brain-search");
     out.classList.remove("hidden");
-    out.textContent = "recalling…";
-    const r = await window.mf.brainRecall(q);
-    out.textContent = (r.out || r.err || "").trim();
+    out.textContent = "Ищу в памяти…";
+    button.disabled = true;
+    try {
+      const r = await window.mf.brainRecall(q);
+      out.textContent = (r?.out || r?.err || "Ничего не найдено.").trim();
+    } catch {
+      out.textContent = "Не удалось выполнить поиск. Проверьте backend и попробуйте снова.";
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function prune() {
     const out = $("brain-recall-out");
+    const button = $("brain-prune");
     out.classList.remove("hidden");
-    out.textContent = "checking for expired facts…";
-    const dry = await window.mf.brainPrune(false);
-    out.textContent = (dry.out || dry.err || "").trim();
-    if (!/expired/i.test(dry.out) || /nothing expired/i.test(dry.out)) return;
-    if (await window.mf.confirm("Delete expired facts",
-      "Removes every fact listed above from the brain. This cannot be undone."))
-      { const r = await window.mf.brainPrune(true); out.textContent = (r.out || r.err || "").trim(); refresh(); }
+    out.textContent = "Проверяю устаревшие факты…";
+    button.disabled = true;
+    try {
+      const dry = await window.mf.brainPrune(false);
+      out.textContent = (dry?.out || dry?.err || "Проверка завершена.").trim();
+      if (!/expired/i.test(dry?.out || "") || /nothing expired/i.test(dry?.out || "")) return;
+      if (await window.mf.confirm("Удалить устаревшие факты?",
+        "Все перечисленные выше факты будут удалены без возможности восстановления.")) {
+        const r = await window.mf.brainPrune(true);
+        out.textContent = (r?.out || r?.err || "Очистка завершена.").trim();
+        await refresh();
+      }
+    } catch {
+      out.textContent = "Не удалось проверить или очистить память. Попробуйте снова.";
+    } finally {
+      button.disabled = false;
+    }
   }
 
   function init() {

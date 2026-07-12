@@ -82,12 +82,20 @@ function checkStoriesInProject(stories, repoDir) {
   const root = path.resolve(String(repoDir || ""));
   const re = /~\/[^\s'"`)\],;]*|\/(?:Users|home|tmp|var|etc|opt)\/[^\s'"`)\],;]*/g;
   for (const s of stories || []) {
-    for (let m of String(s).match(re) || []) {
+    const text = String(s);
+    for (let m of text.match(re) || []) {
       m = m.replace(/[.:]+$/, "");                           // точка в конце предложения — не часть пути
       if (m.startsWith("~")) return m;                       // домашние пути — всегда вне
       const p = path.resolve(m);
       if (p !== root && !p.startsWith(root + path.sep)) return m;
     }
+    // Относительный traversal обходит абсолютный regex, но из корня worktree
+    // первый же `..` уже означает запись вне проекта. Windows-путь также всегда
+    // чужой для поддерживаемых сейчас macOS/Linux worktree.
+    const rel = text.match(/(?:^|[\s'"`(\[,;])((?:\.\.[/\\])+[^\s'"`)\],;]*)/);
+    if (rel) return rel[1].replace(/[.:]+$/, "");
+    const win = text.match(/\b[A-Za-z]:\\[^\s'"`)\],;]*/);
+    if (win) return win[0].replace(/[.:]+$/, "");
   }
   return null;
 }

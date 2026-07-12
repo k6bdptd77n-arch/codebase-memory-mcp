@@ -86,11 +86,17 @@ def summarize(events):
         "brain": {
             "facts_saved": ev.get("fact_saved", 0),
             "facts_forgotten": ev.get("fact_forgotten", 0),
+            "facts_pruned": ev.get("facts_pruned", 0),
             "recalls": ev.get("recall", 0),
             "reflects": ev.get("reflect", 0),
             "relations_emitted": ev.get("relate_emitted", 0),
-            # net facts in the store = saved minus forgotten (a rough growth signal, never below 0)
-            "net_facts": max(ev.get("fact_saved", 0) - ev.get("fact_forgotten", 0), 0),
+            # net facts in the store = saved minus explicit forgets and expiry pruning.
+            "net_facts": max(
+                ev.get("fact_saved", 0)
+                - ev.get("fact_forgotten", 0)
+                - ev.get("facts_pruned", 0),
+                0,
+            ),
         },
     }
 

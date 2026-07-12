@@ -50,6 +50,7 @@ private/
 mindforge-ui/dist/
 node_modules/
 graph-ui/dist/
+graph-ui/tsconfig.tsbuildinfo
 
 # Generated reports
 BENCHMARK_REPORT.md

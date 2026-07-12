@@ -264,8 +264,11 @@ window.Views.settings = (() => {
   function applyTheme(t) {
     document.body.classList.toggle("theme-deck", t === "deck");
     localStorage.setItem("mf-theme", t);
-    document.querySelectorAll(".theme-card").forEach((c) =>
-      c.classList.toggle("on", c.dataset.theme === t));
+    document.querySelectorAll(".theme-card").forEach((c) => {
+      const active = c.dataset.theme === t;
+      c.classList.toggle("on", active);
+      c.setAttribute("aria-pressed", String(active));
+    });
   }
 
   function init() {
@@ -284,6 +287,12 @@ window.Views.settings = (() => {
       }
     }
     $("crew-save").addEventListener("click", save);
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && dirty) {
+        e.preventDefault();
+        save();
+      }
+    });
     $("crew-badge").addEventListener("click", () => document.querySelector('.tab[data-tab="settings"]').click());
     for (const nav of document.querySelectorAll(".snav")) {
       nav.addEventListener("click", () => {

@@ -426,29 +426,45 @@ window.Views.board = (() => {
     document.getElementById("bc-status").textContent = "планировщик читает память проекта, затем думает…";
     document.getElementById("bc-stream").textContent = "";
     document.getElementById("bc-preview").classList.add("hidden");
-    const r = await window.mf.planGenerate(bcBrief);
-    go.disabled = false; composing = false;
-    if (!r.ok) { document.getElementById("bc-status").textContent = r.error || "не получилось — попробуйте переформулировать"; return; }
-    bcProposed = r.stories;
-    document.getElementById("bc-status").textContent = `предложено сторей: ${r.stories.length} — проверьте и примите`;
-    const ol = document.getElementById("bc-stories");
-    ol.innerHTML = "";
-    for (const s of r.stories) {
-      const [t, o] = [s.split("::")[0], s.split("::").slice(1).join("::")];
-      const li = document.createElement("li");
-      li.innerHTML = `<div class="st-title">${esc(t)}</div><div class="st-obj">${esc(o)}</div>`;
-      ol.appendChild(li);
+    try {
+      const r = await window.mf.planGenerate(bcBrief);
+      if (!r.ok) {
+        document.getElementById("bc-status").textContent = r.error || "не получилось — попробуйте переформулировать";
+        return;
+      }
+      bcProposed = r.stories;
+      document.getElementById("bc-status").textContent = `предложено сторей: ${r.stories.length} — проверьте и примите`;
+      const ol = document.getElementById("bc-stories");
+      ol.innerHTML = "";
+      for (const s of r.stories) {
+        const [t, o] = [s.split("::")[0], s.split("::").slice(1).join("::")];
+        const li = document.createElement("li");
+        li.innerHTML = `<div class="st-title">${esc(t)}</div><div class="st-obj">${esc(o)}</div>`;
+        ol.appendChild(li);
+      }
+      document.getElementById("bc-preview").classList.remove("hidden");
+    } catch {
+      document.getElementById("bc-status").textContent = "планировщик не ответил — попробуйте ещё раз";
+    } finally {
+      go.disabled = false;
+      composing = false;
     }
-    document.getElementById("bc-preview").classList.remove("hidden");
   }
   async function composerAccept() {
     if (!bcProposed) return;
-    const r = await window.mf.planAccept(bcBrief.slice(0, 90), bcProposed, "create");
-    document.getElementById("bc-status").textContent = (r.out || r.err || "").split("\n")[0];
-    bcProposed = null;
-    document.getElementById("bc-preview").classList.add("hidden");
-    document.getElementById("bc-stream").classList.add("hidden");
-    refresh();                       // план создан → render() сам заменит композер полосами
+    const accept = document.getElementById("bc-accept");
+    accept.disabled = true;
+    try {
+      const r = await window.mf.planAccept(bcBrief.slice(0, 90), bcProposed, "create");
+      document.getElementById("bc-status").textContent = (r.out || r.err || r.error || "").split("\n")[0];
+      if (!r.ok) return;
+      bcProposed = null;
+      document.getElementById("bc-preview").classList.add("hidden");
+      document.getElementById("bc-stream").classList.add("hidden");
+      refresh();                       // план создан → render() сам заменит композер полосами
+    } catch {
+      document.getElementById("bc-status").textContent = "не удалось сохранить план — предложение оставлено на экране";
+    } finally { accept.disabled = false; }
   }
   function composerReset() {
     bcProposed = null;
@@ -489,6 +505,9 @@ window.Views.board = (() => {
     document.getElementById("board-open-plan").addEventListener("click",
       () => document.querySelector('.tab[data-tab="plan"]').click());
     document.getElementById("bc-go").addEventListener("click", composerGo);
+    document.getElementById("bc-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); composerGo(); }
+    });
     document.getElementById("bc-accept").addEventListener("click", composerAccept);
     document.getElementById("bc-discard").addEventListener("click", composerReset);
     window.mf.onClaudeStream(composerStream);
@@ -501,6 +520,9 @@ window.Views.board = (() => {
     });
     document.getElementById("wiz-add").addEventListener("click", wizardRow);
     document.getElementById("wiz-create").addEventListener("click", wizardSubmit);
+    document.getElementById("plan-wizard").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); wizardSubmit(); }
+    });
     document.getElementById("wiz-cancel").addEventListener("click", wizardClose);
     window.mf.onStoryState((m) => { if (m.state === "exited") onExit(m.id); else refresh(); });
     pollTimer = setInterval(pump, 1500);

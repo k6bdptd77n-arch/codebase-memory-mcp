@@ -24,10 +24,13 @@ jobs:
         with:
           node-version: '20'
       - name: Build the C memory engine (bundled as an extraResource)
-        run: bash scripts/build.sh
-      - name: Install UI deps
+        run: bash scripts/build.sh --with-ui
+      - name: Install and validate UI
         working-directory: mindforge-ui
-        run: npm ci
+        run: |
+          npm ci
+          npm test
+          npm run check
       - name: Package (unsigned unless APPLE_* secrets are set — see build/notarize.js)
         working-directory: mindforge-ui
         run: npm run dist

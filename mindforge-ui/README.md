@@ -14,10 +14,10 @@ trail stay complete whether you drive from the GUI or the terminal.
 | **Metrics** | `metrics.py --project` telemetry cards, the locked spec, latest ledger events. |
 | **Terminal** | A real PTY in the repo (type `claude` to start an interactive session). |
 
-**Autopilot** (header toggle): in MANUAL a story merges only after your Approve click;
-in AUTO, when an agent exits, a `claude -p` reviewer verdicts the diff+log, and a
-COMPLETE verdict with a green test suite merges itself. Both paths run the same
-verification gate — the test suite must pass in the main checkout before any merge.
+**Trust mode** (header): MANUAL merges only after your Approve click; REVIEW always
+runs the model reviewer but keeps merge manual; AUTO reviews and merges a COMPLETE
+verdict automatically. Every path uses the same verification gate — tests must pass
+in the main checkout before merge.
 
 Header lights are live: MEMORY (knowledge-graph size from the C engine), PROCEDURE
 (plan progress), BRAIN (fact count). Any change under `.fablize/` refreshes the UI
@@ -27,9 +27,11 @@ via `fs.watch` — agents running in worktrees move the board by themselves.
 
 ```bash
 cd mindforge-ui
-npm install            # electron, node-pty, xterm (node-pty may need @electron/rebuild)
+npm ci                 # electron, node-pty, xterm + native rebuild
+npm test               # project boundaries, provider HTTP, atomic files, graph lifecycle
+npm run check          # syntax validation for every process/view module
 npm start
-npm run shot           # headless screenshots of every tab → /tmp/mindforge_*.png
+npm run shot           # all tabs, palette and compact layouts → /tmp/mindforge_*.png
 ```
 
 ## Projects
@@ -48,8 +50,11 @@ persisted as the last-opened project.
 
 Requires: `claude` CLI on PATH (subscription — no API key), `python3`, git. Fonts
 (Space Grotesk, IBM Plex Mono — both OFL) are vendored in `fonts/` for offline use.
+OpenAI-compatible planning/review providers are optional; requests have a 30-second
+timeout and bounded responses. The 3D action reuses a healthy server or starts the
+bundled `--with-ui` engine and owns its lifecycle.
 
-Design: "Flight Deck" — deep-space blue field, instrument amber for live/attention,
-telemetry teal for verified-good, signal red for gates. Destructive actions
+Design: Cursor-style graphite is the default; optional "Flight Deck" uses deep-space
+blue, instrument amber and telemetry teal. Destructive actions
 (merge, stop, prune) always go through a native confirm dialog raised by the main
 process, which page CSS cannot spoof.
