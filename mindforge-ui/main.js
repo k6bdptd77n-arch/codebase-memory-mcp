@@ -15,10 +15,14 @@ const PY = "python3";
 const SCRIPTS = path.join(INSTALL, "fablize", "scripts");
 const BIN = path.join(INSTALL, "build", "c", "codebase-memory-mcp");
 const SHOT = process.argv.includes("--shot");
+const E2E = process.argv.includes("--e2e-smoke");
 const { okProjectName, createProjectAt, checkStoriesInProject } = require("./projectcore");
 const { apiChatRequest } = require("./providercore");
 const { createGraphSupervisor } = require("./graphcore");
 const { atomicWriteFileSync } = require("./filecore");
+const { createAsyncMemo } = require("./pollcore");
+const I18N = require("./i18n");
+const t = (k, p) => I18N.t(k, p);
 
 // A GUI launched from Finder/Dock inherits a truncated PATH (often just /usr/bin:/bin), so
 // bare `python3` / `git` / `claude` / `node` fail to spawn. Append the usual install dirs once
@@ -122,6 +126,7 @@ function episodes() {
 // snapshot is called by board+metrics on every change tick — memoize ~500ms so
 // they share one computation (and one set of git subprocesses) per tick.
 let snapMemo = { t: 0, p: null };
+const metricsMemo = createAsyncMemo({ ttlMs: 4000 });
 function snapshot() {
   if (snapMemo.p && Date.now() - snapMemo.t < 500) return snapMemo.p;
   snapMemo = { t: Date.now(), p: computeSnapshot() };
@@ -276,7 +281,7 @@ async function think(tag, role, prompt) {
   }
   const emit = (text) => send("claude-stream",
     { tag, ev: { type: "assistant", message: { content: [{ type: "text", text }] } } });
-  emit(`[${model}] думаю…\n`);
+  emit(t("main.thinking", { model }) + "\n");
   const r = await apiChat(m[1], m[2], prompt);
   if (r.ok) emit(r.out); else send("claude-stream", { tag, error: r.out });
   return r;
@@ -451,7 +456,7 @@ async function planGenerate(feature) {
 
 const PATCH_MAX_LINES = 1500;
 async function reviewEvidence(id) {
-  if (!okId(id)) return { ok: false, text: "(некорректный id стори)" };
+  if (!okId(id)) return { ok: false, text: `(${t("main.badStoryId")})` };
   const branch = `fablize/${id}`;
   const base = await run("git", ["merge-base", "HEAD", branch]);
   if (!base.ok) return { ok: false, text: `(no branch ${branch})` };
@@ -503,7 +508,7 @@ function writeReceipt(id, { verdict, evidence, verifyCmd, verifyEvidence, mode }
 async function storyApprove(_e, { id, evidence, mode }) {
   const steps = [];
   const step = (name, r) => { steps.push({ name, ok: r.ok, out: (r.out + "\n" + (r.err || "")).trim().slice(-1200) }); return r.ok; };
-  if (!okId(id)) return { ok: false, steps: [{ name: "validate id", ok: false, out: "некорректный id стори" }] };
+  if (!okId(id)) return { ok: false, steps: [{ name: "validate id", ok: false, out: t("main.badStoryId") }] };
   const goals = readJSON(path.join(fablize(), "goals.json"));
   const glist = Array.isArray(goals?.goals) ? goals.goals : [];
   const isFinal = glist.length > 0 && glist[glist.length - 1].id === id;
@@ -516,7 +521,7 @@ async function storyApprove(_e, { id, evidence, mode }) {
     if (!step("verification gate: pytest", tests)) return { ok: false, steps };
     tail = tests.out.trim().split("\n").pop();
   } else {
-    step("verification gate", { ok: true, out: "fablize/tests не найден в проекте — авто-gate пропущен, приёмка по ревью", err: "" });
+    step("verification gate", { ok: true, out: t("main.gateSkipped"), err: "" });
   }
   await engine("goals.py", ["next"]);
   const vcmd = hasSuite ? "python3 -m pytest fablize/tests/ -q" : "manual review in MindForge Control";
@@ -583,6 +588,7 @@ function startTerm() {
 function switchProject(dir, persist = true) {
   projectDir = path.resolve(String(dir));
   snapMemo = { t: 0, p: null };                              // stale memo belongs to the old project
+  metricsMemo.clear();                                       // metrics are scoped to the project
   mcpCache = { t: 0, list: null };                           // .mcp.json is per-project
   armWatch();
   startTerm();                                               // terminal follows the project
@@ -604,7 +610,7 @@ function createWindow() {
   });
   win = new BrowserWindow({
     width: 1560, height: 940, minWidth: 860, minHeight: 620,
-    backgroundColor: "#070B16", show: !SHOT,
+    backgroundColor: "#070B16", show: !SHOT && !E2E,
     title: "MindForge Control", titleBarStyle: "hiddenInset",
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true,
       nodeIntegration: false, sandbox: true },
@@ -625,10 +631,10 @@ function createWindow() {
   ipcMain.handle("reindex", () => { indexProject(repo()); return { ok: fs.existsSync(BIN) }; });
   ipcMain.handle("brain-facts", () => brainFacts());
   ipcMain.handle("episodes", () => episodes());
-  ipcMain.handle("metrics", async () => {
+  ipcMain.handle("metrics", () => metricsMemo.get(repo(), async () => {
     const r = await engine("metrics.py", ["--json", "--project", repo()]);
     try { return JSON.parse(r.out); } catch { return null; }
-  });
+  }));
   ipcMain.handle("log-tail", (_e, id) =>
     okId(id) ? readTail(path.join(fablize(), "orchestrator", `${id}.log`), 120) : "");
   ipcMain.handle("review-evidence", (_e, id) => reviewEvidence(id));   // validates id itself
@@ -639,9 +645,13 @@ function createWindow() {
     engine("brain.py", apply ? ["prune", "--apply"] : ["prune"], { timeout: 30000 }));
 
   // story lifecycle
+  ipcMain.handle("locale-set", (_e, locale) => {
+    I18N.setLocale(locale);
+    return { ok: true, locale: I18N.locale };
+  });
   ipcMain.handle("story-run", async (_e, id) => {
-    if (!okId(id)) return { ok: false, error: "некорректный id стори" };
-    if (running.has(id)) return { ok: false, error: "уже запущено" };
+    if (!okId(id)) return { ok: false, error: t("main.badStoryId") };
+    if (running.has(id)) return { ok: false, error: t("main.alreadyRunning") };
     const hand = crewLoad().roles.hand;
     const ra = hand.cli === "claude" ? await buildRoleArgs("hand") : { args: [], cleanup: () => {} };
     const handArgs = ra.args.map((a) => `--agent-arg=${a}`);
@@ -662,30 +672,28 @@ function createWindow() {
     return { ok: true };
   });
   ipcMain.handle("story-stop", (_e, id) => {
-    if (!okId(id)) return { ok: false, error: "некорректный id стори" };
+    if (!okId(id)) return { ok: false, error: t("main.badStoryId") };
     const c = running.get(id);
     if (c) { try { c.child.kill(); } catch {} running.delete(id); }
     return { ok: true };
   });
   ipcMain.handle("story-approve", storyApprove);                       // validates id itself
   ipcMain.handle("story-fail", async (_e, { id, reason }) => {
-    if (!okId(id)) return { ok: false, error: "некорректный id стори" };
+    if (!okId(id)) return { ok: false, error: t("main.badStoryId") };
     await engine("goals.py", ["next"]);
     return engine("goals.py", ["checkpoint", "--id", id, "--status", "failed", "--evidence", reason || "rejected in review"]);
   });
   ipcMain.handle("story-retry", (_e, id) =>
-    okId(id) ? engine("goals.py", ["retry", "--id", id]) : { ok: false, error: "некорректный id стори" });
+    okId(id) ? engine("goals.py", ["retry", "--id", id]) : { ok: false, error: t("main.badStoryId") });
   ipcMain.handle("review-llm", (_e, id) =>
-    okId(id) ? reviewLLM(id) : { verdict: "FAILED", text: "некорректный id стори" });
+    okId(id) ? reviewLLM(id) : { verdict: "FAILED", text: t("main.badStoryId") });
 
   // planner
   ipcMain.handle("plan-generate", (_e, feature) => planGenerate(feature));
   ipcMain.handle("plan-accept", async (_e, { brief, stories, mode }) => {
     // ловим «чужие» пути на этапе плана, а не после провала агента в песочнице
     const outside = checkStoriesInProject(stories, repo());
-    if (outside) return { ok: false, err: `Задача выходит за пределы проекта (${outside}). ` +
-      "Стори работают только с файлами этого проекта. Для разовых действий на компьютере " +
-      "откройте вкладку «Терминал» — там обычный claude без ограничений доски." };
+    if (outside) return { ok: false, err: t("main.outsideProject", { outside }) };
     const args = mode === "add" ? ["add"] : ["create", "--force", "--brief", brief];
     for (const s of stories) args.push("--goal", s);
     return engine("goals.py", args);
@@ -718,7 +726,7 @@ function createWindow() {
   // dialog, pick an index from the persisted recents, or submit a validated name.
   ipcMain.handle("project-info", () => projectInfo());
   ipcMain.handle("project-open", async () => {
-    const r = await dialog.showOpenDialog(win, { title: "Открыть проект",
+    const r = await dialog.showOpenDialog(win, { title: t("main.openProject"),
       properties: ["openDirectory", "createDirectory"] });
     if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
     switchProject(r.filePaths[0]);
@@ -728,16 +736,16 @@ function createWindow() {
     const list = recentsList();
     const idx = Number(i);
     if (!Number.isInteger(idx) || idx < 0 || idx >= list.length)
-      return { ok: false, error: "нет такого проекта в списке" };
+      return { ok: false, error: t("main.noSuchProject") };
     switchProject(list[idx]);
     return { ok: true, info: projectInfo() };
   });
   ipcMain.handle("project-create", async (_e, rawName) => {
     const name = String(rawName || "").trim();
     if (!okProjectName(name))
-      return { ok: false, error: "недопустимое имя: буквы, цифры, точка, дефис, пробел; без / и \\" };
-    const r = await dialog.showOpenDialog(win, { title: `Где создать проект «${name}»`,
-      buttonLabel: "Создать здесь", properties: ["openDirectory", "createDirectory"] });
+      return { ok: false, error: t("main.badProjectName") };
+    const r = await dialog.showOpenDialog(win, { title: t("main.whereCreate", { name }),
+      buttonLabel: t("main.createHere"), properties: ["openDirectory", "createDirectory"] });
     if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
     const res = await createProjectAt(INSTALL, r.filePaths[0], name);
     if (res.ok) switchProject(res.target);
@@ -817,6 +825,69 @@ function createWindow() {
       app.quit();
     });
   }
+  if (E2E) {
+    win.webContents.once("did-finish-load", () => runE2ESmoke());
+  }
+}
+
+// Full renderer -> preload -> main smoke test. Everything lives under a temporary
+// directory and the launcher supplies a temporary HOME, so this can never change
+// the user's open project, recents, hooks, or git configuration.
+async function runE2ESmoke() {
+  const resultPath = process.env.MINDFORGE_E2E_RESULT || path.join(os.tmpdir(), "mindforge-e2e.json");
+  const result = { ok: false, created: false, planned: false, approved: false, rejected: false };
+  let parent = null;
+  try {
+    parent = fs.mkdtempSync(path.join(os.tmpdir(), "mindforge-e2e-project-"));
+    const created = await createProjectAt(INSTALL, parent, "smoke-project", process.env);
+    if (!created.ok) throw new Error(`project creation failed: ${JSON.stringify(created.steps)}`);
+    result.created = true;
+    result.project = created.target;
+    switchProject(created.target, false);
+
+    const stories = [
+      "accept-smoke::Create accepted.txt in this project and verify it exists",
+      "reject-smoke::Create rejected.txt in this project and verify it exists",
+    ];
+    const plan = await win.webContents.executeJavaScript(
+      `window.mf.planAccept("Electron E2E smoke", ${JSON.stringify(stories)}, "create")`, true);
+    if (!plan?.ok) throw new Error(`plan creation failed: ${JSON.stringify(plan)}`);
+    result.planned = true;
+
+    const wt = path.join(fablize(), "worktrees", "G001");
+    fs.mkdirSync(path.dirname(wt), { recursive: true });
+    let r = await run("git", ["worktree", "add", wt, "-b", "fablize/G001"]);
+    if (!r.ok) throw new Error(`worktree failed: ${r.err}`);
+    fs.writeFileSync(path.join(wt, "accepted.txt"), "accepted by Electron E2E\n");
+    r = await run("git", ["add", "accepted.txt"], { cwd: wt });
+    if (!r.ok) throw new Error(`git add failed: ${r.err}`);
+    r = await run("git", ["-c", "user.name=MindForge", "-c", "user.email=mindforge@local",
+      "commit", "-m", "E2E accepted story"], { cwd: wt });
+    if (!r.ok) throw new Error(`git commit failed: ${r.err}`);
+
+    const approved = await win.webContents.executeJavaScript(
+      'window.mf.storyApprove("G001", "Electron E2E approval", "manual")', true);
+    if (!approved?.ok) throw new Error(`approval failed: ${JSON.stringify(approved)}`);
+    result.approved = true;
+
+    const rejected = await win.webContents.executeJavaScript(
+      'window.mf.storyFail("G002", "Electron E2E rejection")', true);
+    if (!rejected?.ok) throw new Error(`rejection failed: ${JSON.stringify(rejected)}`);
+    result.rejected = true;
+
+    const goals = readJSON(path.join(fablize(), "goals.json"));
+    const states = Object.fromEntries((goals?.goals || []).map((g) => [g.id, g.status]));
+    result.states = states;
+    result.merged = fs.existsSync(path.join(repo(), "accepted.txt"));
+    result.receipt = fs.existsSync(path.join(fablize(), "receipts", "G001.json"));
+    result.ok = states.G001 === "complete" && states.G002 === "failed" && result.merged && result.receipt;
+    if (!result.ok) throw new Error(`final state mismatch: ${JSON.stringify(result)}`);
+  } catch (e) {
+    result.error = e && (e.stack || e.message) || String(e);
+  }
+  try { fs.writeFileSync(resultPath, JSON.stringify(result, null, 2) + "\n"); } catch {}
+  if (parent) { try { fs.rmSync(parent, { recursive: true, force: true }); } catch {} }
+  app.exit(result.ok ? 0 : 1);
 }
 
 app.whenReady().then(async () => {

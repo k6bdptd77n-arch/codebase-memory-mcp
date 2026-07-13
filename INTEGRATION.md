@@ -13,6 +13,25 @@ layer gives it a **history**. A map without a method wanders, a method without a
 file, and both without a history re-derive the same context every session. See `fablize/MINDFORGE.md`
 for the unified operating loop.
 
+## Permanent Codex lifecycle
+
+`bash install-combined.sh <project>` is the supported bootstrap and repair command. It wires four boundaries:
+
+1. Global `~/.codex/config.toml` registration lets Codex launch the MCP engine with each session.
+2. Engine configuration enables first-session auto-indexing and the ongoing watcher for known projects.
+3. Global and repository-local `mindforge-workflow` skills enforce graph-first discovery and evidence-backed completion.
+4. Repository-local Codex hooks store concise prompt/outcome traces in the Brain after a turn.
+
+The engine and watcher are session-lived; their SQLite graph is persistent. Brain facts and traces are persistent files. This means no always-running background service is necessary, while closing Codex does not erase learned project state.
+
+Verify all boundaries without changing anything:
+
+```bash
+bash install-combined.sh --check /path/to/project
+```
+
+The command returns non-zero when a required registration, skill, hook, Brain runtime, auto-index setting, or graph-store smoke test is missing. Rerunning the normal install repairs those items without duplicating instruction blocks or hooks.
+
 ## Where the procedure calls the memory
 
 The fablize disciplines invoke the MCP tools at the exact points they help most:

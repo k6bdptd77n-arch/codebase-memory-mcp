@@ -4,21 +4,19 @@
 window.Views = window.Views || {};
 
 window.Views.board = (() => {
+  const t = (key, params) => window.I18N.t(key, params);
   const lanes = () => document.getElementById("lanes");
   let snap = null;
   let pollTimer = null;
   let mergedOpen = false;                // архивная группа «Смержено» раскрыта?
   let openLaneLogs = new Set();          // story ids with visible live log
 
-  const STATE_LABEL = {
-    pending: "ожидание", running: "в работе", review: "на проверке",
-    complete: "принято", failed: "не удалась", blocked: "заблокировано", in_progress: "активна",
-  };
+  const stateLabel = (state) => t(`board.state.${state}`);
 
   // «взлётка»: план → код → verify → ревью → merge(gate). Честная проекция
   // доступного состояния; гейт зеленеет ТОЛЬКО на complete.
   function phaseRail(st, hasBranch) {
-    const seg = ["план", "код", "проверка", "ревью", "в проект"];
+    const seg = ["plan", "code", "verify", "review", "project"].map((name) => t(`board.flight.${name}`));
     const fill = { pending: 1, in_progress: 2, running: 1, review: 4,
       complete: 5, failed: hasBranch ? 4 : 2 }[st] ?? 1;
     let h = '<div class="phase-rail">';
@@ -71,7 +69,7 @@ window.Views.board = (() => {
     wizard.classList.add("hidden");
     const gs = snap.goals.goals;
     const done = gs.filter((g) => g.status === "complete").length;
-    brief.innerHTML = `${esc(snap.goals.brief)}<small>принято ${done}/${gs.length}</small>`;
+    brief.innerHTML = `${esc(snap.goals.brief)}<small>${esc(t("board.acceptedCount", { done, total: gs.length }))}</small>`;
     guide();
     box.innerHTML = "";
     const gate = firstOpenId();
@@ -83,16 +81,16 @@ window.Views.board = (() => {
       el.className = `lane ${st}`;
       el.dataset.id = g.id;
       const tele = st === "running" && (rt.commits != null || rt.elapsedMin != null)
-        ? `<span class="lane-tele">${rt.commits ?? 0} коммита · ${rt.elapsedMin ?? 0}м</span>` : "";
+        ? `<span class="lane-tele">${esc(t("board.telemetry", { commits: rt.commits ?? 0, minutes: rt.elapsedMin ?? 0 }))}</span>` : "";
       el.innerHTML = `
         <div class="lane-top">
           <span class="lane-id">${g.id}</span>
           <span class="lane-title">${esc(g.title)}</span>
-          <span class="lane-status">${tele}<span class="lane-chip">${STATE_LABEL[st]}</span></span>
+          <span class="lane-status">${tele}<span class="lane-chip">${esc(stateLabel(st))}</span></span>
         </div>
         <div class="lane-obj" title="${esc(g.objective)}">${esc(g.objective)}</div>
         ${phaseRail(st, !!rt.branch)}
-        ${g.attempts >= 2 ? `<div class="escalation">⚠ эскалация — ${g.attempts} провала подряд; нужна модель сильнее или человек</div>` : ""}
+        ${g.attempts >= 2 ? `<div class="escalation">${esc(t("board.escalation", { attempts: g.attempts }))}</div>` : ""}
         <div class="lane-question hidden"></div>
         <div class="lane-log hidden"></div>
         <div class="lane-actions"></div>`;
@@ -111,21 +109,21 @@ window.Views.board = (() => {
         act.appendChild(b);
         return b;
       };
-      if (st === "pending") btn("▶ Запустить агента", "primary", () => runStory(g.id));
-      if (st === "running") { btn("Остановить", "red", () => stopStory(g.id)); showLog(el, g.id); }
+      if (st === "pending") btn(t("board.runAgent"), "primary", () => runStory(g.id));
+      if (st === "running") { btn(t("board.stop"), "red", () => stopStory(g.id)); showLog(el, g.id); }
       if (st === "review") {
-        btn("Проверить", "teal", () => openReview(g.id),
-            g.id !== gate, g.id !== gate ? "по порядку: сначала примите более ранние стори" : "");
-        btn("Лог", "ghost", () => toggleLog(el, g.id));
+        btn(t("board.review"), "teal", () => openReview(g.id),
+            g.id !== gate, g.id !== gate ? t("board.reviewOrder") : "");
+        btn(t("board.log"), "ghost", () => toggleLog(el, g.id));
       }
       if (st === "failed") {
-        btn("Повторить", "ghost", () => window.mf.storyRetry(g.id).then(refresh));
+        btn(t("board.retry"), "ghost", () => window.mf.storyRetry(g.id).then(refresh));
         // если агент упёрся и задал вопрос — он не должен тонуть в логе провала
         window.mf.logTail(g.id).then((t) => {
           const q = extractQuestion(t);
           const box = el.querySelector(".lane-question");
           if (q && box && el.isConnected) {
-            box.textContent = "Агент спрашивает: " + q;
+            box.textContent = t("board.agentAsks", { question: q });
             box.classList.remove("hidden");
           }
         }).catch(() => {});
@@ -149,7 +147,7 @@ window.Views.board = (() => {
       grp.className = "merged-group" + (mergedOpen ? " open" : "");
       const head = document.createElement("button");
       head.className = "merged-head";
-      head.innerHTML = `<span class="chev">▶</span> Принято в проект (${merged.length})`;
+      head.innerHTML = `<span class="chev">▶</span> ${esc(t("board.acceptedGroup", { count: merged.length }))}`;
       head.addEventListener("click", () => { mergedOpen = !mergedOpen; grp.classList.toggle("open", mergedOpen); });
       const body = document.createElement("div");
       body.className = "merged-body";
@@ -161,11 +159,11 @@ window.Views.board = (() => {
 
   async function runStory(id) {
     const r = await window.mf.storyRun(id);
-    if (!r.ok) note(r.error || "не удалось запустить");
+    if (!r.ok) note(r.error || t("board.runFailed"));
     refresh();
   }
   async function stopStory(id) {
-    if (await window.mf.confirm("Остановить агента", `Прервать работающего агента ${id}? Его черновик работы сохранится — можно будет посмотреть, что он успел.`))
+    if (await window.mf.confirm(t("board.stopTitle"), t("board.stopDetail", { id })))
       { await window.mf.storyStop(id); refresh(); }
   }
 
@@ -184,7 +182,7 @@ window.Views.board = (() => {
       if (!el) continue;
       const t = await window.mf.logTail(id);
       const stick = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
-      el.textContent = t || "(агент стартует — лог появится, как только claude начнёт писать)";
+      el.textContent = t || window.I18N.t("board.logStarting");
       if (stick) el.scrollTop = el.scrollHeight;
     }
   }
@@ -202,16 +200,16 @@ window.Views.board = (() => {
     document.getElementById("drawer-approve").disabled = !reviewable;
     document.getElementById("drawer-fail").disabled = st !== "review";
     document.getElementById("drawer-state").textContent =
-      st === "failed" ? "Стори помечена неудачной — принять нельзя. Вернитесь на доску и нажмите «Повторить», либо переформулируйте задачу."
-      : st === "complete" ? "Работа уже принята в проект — действий не требуется."
-      : st === "running" ? "Агент ещё работает — дождитесь завершения."
+      st === "failed" ? t("board.failedState")
+      : st === "complete" ? t("board.completeState")
+      : st === "running" ? t("board.runningState")
       : "";
   }
   function renderPatch(body, ev) {
     // the actual patch, so approving is never blind: monospace block, +/- coloring
     const head = document.createElement("div");
     head.className = "diff-head";
-    head.textContent = "=== патч" + (ev.truncated ? " (показаны первые 1500 строк)" : "") + ":";
+    head.textContent = t("board.patch", { suffix: ev.truncated ? t("board.patchTruncated") : "" });
     body.appendChild(head);
     const block = document.createElement("div");
     block.className = "diff-block";
@@ -245,7 +243,7 @@ window.Views.board = (() => {
       body.appendChild(obj);
     }
     const load = document.createElement("div");
-    load.textContent = "собираю доказательства…";
+    load.textContent = t("board.collecting");
     body.appendChild(load);
     d.classList.remove("hidden");
     syncDrawer();
@@ -253,28 +251,27 @@ window.Views.board = (() => {
       const ev = await window.mf.reviewEvidence(id);
       load.textContent = ev.text;
       if (ev.ok && ev.patch) renderPatch(body, ev);
-    } catch { load.textContent = "не удалось собрать доказательства — попробуйте ещё раз"; }
+    } catch { load.textContent = t("board.collectFailed"); }
   }
   function closeReview() { document.getElementById("drawer").classList.add("hidden"); drawerId = null; }
 
   async function approve() {
     if (!drawerId) return;
     const id = drawerId;
-    if (!(await window.mf.confirm(`Принять работу ${id}`,
-      "Проверю тестами проекта — и на зелёных работа войдёт в проект, а черновик будет убран. Красные тесты ничего не изменят."))) return;
-    progress(`▸ проверяю тестами…`);
+    if (!(await window.mf.confirm(t("board.acceptTitle", { id }), t("board.acceptDetail")))) return;
+    progress(t("board.testing"));
     const mode = window.mfMode ? window.mfMode() : "manual";
-    const r = await window.mf.storyApprove(id, `принято в MindForge Control`, mode);
+    const r = await window.mf.storyApprove(id, t("board.acceptEvidence"), mode);
     for (const s of r.steps) progress(`${s.ok ? "✓" : "✗"} ${s.name}\n${s.out}`, s.ok);
-    if (r.ok) { progress(`✓ ${id} принято в проект — ${r.testsTail}`, true); setTimeout(closeReview, 1200); }
+    if (r.ok) { progress(t("board.acceptDone", { id, tail: r.testsTail }), true); setTimeout(closeReview, 1200); }
     refresh();
   }
   async function fail() {
     if (!drawerId) return;
     const id = drawerId;
-    if (!(await window.mf.confirm(`Отклонить ${id}`, "Пометит стори как неудачную; черновик работы сохранится — в проект ничего не попадёт.")))
+    if (!(await window.mf.confirm(t("board.rejectTitle", { id }), t("board.rejectDetail"))))
       return;
-    await window.mf.storyFail(id, "отклонено на проверке");
+    await window.mf.storyFail(id, t("board.rejected"));
     closeReview(); refresh();
   }
   function progress(text, ok) {
@@ -294,20 +291,20 @@ window.Views.board = (() => {
   async function onExit(id) {
     const mode = window.mfMode ? window.mfMode() : "manual";
     if (mode === "manual") { refresh(); return; }
-    const label = mode === "auto" ? "автопилот" : "ревью";
-    note(`${label}: проверяю ${id}…`);
+    const label = mode === "auto" ? t("board.autopilot") : t("board.flight.review");
+    note(t("board.autoChecking", { label, id }));
     const r = await window.mf.reviewLLM(id);
     if (mode !== "auto") {                                        // review: только уведомление, merge рукой
-      note(`ревью ${id}: ${r.verdict} — откройте «Проверить», чтобы слить`);
+      note(t("board.reviewReady", { id, verdict: r.verdict }));
       refresh();
       return;
     }
-    note(`${label} ${id}: ${r.verdict}`);
+    note(t("board.autoResult", { label, id, verdict: r.verdict }));
     if (r.verdict === "COMPLETE" && id === firstOpenId()) {
-      const ap = await window.mf.storyApprove(id, "автопилот: " + r.text.slice(0, 160), "auto");
-      note(ap.ok ? `автопилот: ${id} принято в проект ✓` : `автопилот: ${id} не прошло тесты — оставлено на ручную проверку`);
+      const ap = await window.mf.storyApprove(id, `${t("board.autopilot")}: ${r.text.slice(0, 160)}`, "auto");
+      note(ap.ok ? t("board.autoAccepted", { id }) : t("board.autoTestsFailed", { id }));
     } else if (r.verdict === "FAILED") {
-      await window.mf.storyFail(id, "автопилот: " + r.text.slice(0, 160));
+      await window.mf.storyFail(id, `${t("board.autopilot")}: ${r.text.slice(0, 160)}`);
     }
     refresh();
   }
@@ -322,25 +319,24 @@ window.Views.board = (() => {
       if (ctaLabel) { cta.textContent = ctaLabel; cta.onclick = fn; }
     };
     if (!snap || !snap.goals)
-      return show("Шаг 1 · Опишите ниже, что построить — планировщик разложит на стори, агенты сделают.",
+      return show(t("board.guideStart"),
         null);
     const gs = snap.goals.goals;
     const by = (st) => gs.filter((g) => laneState(g) === st);
     const rev = by("review"), run = by("running"), pen = by("pending"), fail = by("failed");
     if (rev.length)
-      return show(`Шаг 3 · ${rev[0].id} ждёт проверки — посмотрите изменения и примите работу.`,
-        `Проверить ${rev[0].id}`, () => openReview(rev[0].id));
+      return show(t("board.guideReview", { id: rev[0].id }),
+        t("board.reviewId", { id: rev[0].id }), () => openReview(rev[0].id));
     if (run.length)
-      return show(`Шаг 2 · Агент в полёте (${run.map((g) => g.id).join(", ")}) — живой лог на дорожке.` +
-        (pen.length ? " Можно запустить следующую стори параллельно." : ""), null);
+      return show(t("board.guideRunning", { ids: run.map((g) => g.id).join(", "), parallel: pen.length ? t("board.guideParallel") : "" }), null);
     if (pen.length)
-      return show(`Шаг 2 · Запустите агента на ${pen[0].id} — он будет работать в изолированном worktree.`,
-        `▶ Запустить ${pen[0].id}`, () => runStory(pen[0].id));
+      return show(t("board.guidePending", { id: pen[0].id }),
+        t("board.runId", { id: pen[0].id }), () => runStory(pen[0].id));
     if (fail.length)
-      return show(`⚠ ${fail[0].id} провалена — посмотрите лог и повторите, либо переформулируйте стори.`,
-        "Повторить", () => window.mf.storyRetry(fail[0].id).then(refresh));
-    return show("Миссия завершена ✓ — все стори слиты. Начните следующую: опишите новую фичу.",
-      "Открыть «План»", () => document.querySelector('.tab[data-tab="plan"]').click());
+      return show(t("board.guideFailed", { id: fail[0].id }),
+        t("board.retry"), () => window.mf.storyRetry(fail[0].id).then(refresh));
+    return show(t("board.guideDone"),
+      t("board.openPlan"), () => document.querySelector('.tab[data-tab="plan"]').click());
   }
 
   // ── ручной план: brief + N стори (title / objective / команда проверки) ──
@@ -352,11 +348,11 @@ window.Views.board = (() => {
     row.className = "wiz-story";
     row.innerHTML = `
       <div class="wiz-row1">
-        <input class="wz-title" placeholder="название (kebab-case)" spellcheck="false" />
-        <button class="wz-del btn ghost small" title="убрать стори">✕</button>
+        <input class="wz-title" placeholder="${t("board.storyTitlePh")}" spellcheck="false" />
+        <button class="wz-del btn ghost small" title="${t("board.removeStory")}">✕</button>
       </div>
-      <textarea class="wz-obj" rows="2" placeholder="задача: какие файлы можно трогать и что должно получиться" spellcheck="false"></textarea>
-      <input class="wz-verify" list="verify-suggestions" placeholder="команда проверки (например: npm test)" spellcheck="false" />`;
+      <textarea class="wz-obj" rows="2" placeholder="${t("board.storyObjectivePh")}" spellcheck="false"></textarea>
+      <input class="wz-verify" list="verify-suggestions" placeholder="${t("board.verifyPh")}" spellcheck="false" />`;
     row.querySelector(".wz-del").addEventListener("click", () => {
       if (document.querySelectorAll("#wiz-stories .wiz-story").length > 1) row.remove();
     });
@@ -381,25 +377,25 @@ window.Views.board = (() => {
     const err = document.getElementById("wiz-err");
     err.textContent = "";
     const brief = document.getElementById("wiz-brief").value.trim();
-    if (!brief) { err.textContent = "нужен brief"; return; }
+    if (!brief) { err.textContent = t("board.briefRequired"); return; }
     const stories = [];
     for (const row of document.querySelectorAll("#wiz-stories .wiz-story")) {
       const title = row.querySelector(".wz-title").value.trim();
       const obj = row.querySelector(".wz-obj").value.trim();
       const verify = row.querySelector(".wz-verify").value.trim();
       if (!title && !obj) continue;                        // пустую строку молча пропускаем
-      if (!title || !obj) { err.textContent = "у каждой стори нужны и название, и задача"; return; }
-      if (title.includes("::")) { err.textContent = "«::» в названии недопустимо"; return; }
+      if (!title || !obj) { err.textContent = t("board.storyFieldsRequired"); return; }
+      if (title.includes("::")) { err.textContent = t("board.badSeparator"); return; }
       stories.push(`${title}::${obj}${verify ? ` Verify: ${verify}` : ""}`);
     }
-    if (!stories.length) { err.textContent = "нужна хотя бы одна стори"; return; }
+    if (!stories.length) { err.textContent = t("board.storyRequired"); return; }
     const go = document.getElementById("wiz-create");
     go.disabled = true;
     try {
       const r = await window.mf.planAccept(brief, stories, "create");
       if (r.ok) { wizardClose(); refresh(); }
-      else err.textContent = (r.err || r.out || "goals.py create не сработал").trim().slice(0, 200);
-    } catch { err.textContent = "не удалось создать план"; }
+      else err.textContent = (r.err || r.out || t("board.goalsFailed")).trim().slice(0, 200);
+    } catch { err.textContent = t("board.planCreateFailed"); }
     finally { go.disabled = false; }
   }
 
@@ -410,7 +406,7 @@ window.Views.board = (() => {
     const out = document.getElementById("bc-stream");
     out.classList.remove("hidden");
     const stick = out.scrollTop + out.clientHeight >= out.scrollHeight - 8;
-    if (m.error) out.textContent += `\n[ошибка] ${m.error}`;
+    if (m.error) out.textContent += `\n[${t("board.streamError")}] ${m.error}`;
     else if (m.ev && m.ev.type === "assistant" && m.ev.message && Array.isArray(m.ev.message.content))
       for (const b of m.ev.message.content) {
         if (b.type === "thinking" && b.thinking) out.textContent += b.thinking;
@@ -423,17 +419,17 @@ window.Views.board = (() => {
     if (!bcBrief) return;
     const go = document.getElementById("bc-go");
     go.disabled = true; composing = true;
-    document.getElementById("bc-status").textContent = "планировщик читает память проекта, затем думает…";
+    document.getElementById("bc-status").textContent = t("board.composerReading");
     document.getElementById("bc-stream").textContent = "";
     document.getElementById("bc-preview").classList.add("hidden");
     try {
       const r = await window.mf.planGenerate(bcBrief);
       if (!r.ok) {
-        document.getElementById("bc-status").textContent = r.error || "не получилось — попробуйте переформулировать";
+        document.getElementById("bc-status").textContent = r.error || t("board.composerFailed");
         return;
       }
       bcProposed = r.stories;
-      document.getElementById("bc-status").textContent = `предложено сторей: ${r.stories.length} — проверьте и примите`;
+      document.getElementById("bc-status").textContent = t("board.composerProposed", { count: r.stories.length });
       const ol = document.getElementById("bc-stories");
       ol.innerHTML = "";
       for (const s of r.stories) {
@@ -444,7 +440,7 @@ window.Views.board = (() => {
       }
       document.getElementById("bc-preview").classList.remove("hidden");
     } catch {
-      document.getElementById("bc-status").textContent = "планировщик не ответил — попробуйте ещё раз";
+      document.getElementById("bc-status").textContent = t("board.composerNoAnswer");
     } finally {
       go.disabled = false;
       composing = false;
@@ -463,7 +459,7 @@ window.Views.board = (() => {
       document.getElementById("bc-stream").classList.add("hidden");
       refresh();                       // план создан → render() сам заменит композер полосами
     } catch {
-      document.getElementById("bc-status").textContent = "не удалось сохранить план — предложение оставлено на экране";
+      document.getElementById("bc-status").textContent = t("board.composerSaveFailed");
     } finally { accept.disabled = false; }
   }
   function composerReset() {
@@ -491,9 +487,9 @@ window.Views.board = (() => {
       const goals = snap && snap.goals;
       document.getElementById("tm-plan").textContent = goals
         ? `${goals.goals.filter((g) => g.status === "complete").length}/${goals.goals.length} · ${String(goals.brief || "").slice(0, 48)}`
-        : "плана нет";
+        : t("runtime.noPlan");
       const live = Object.values((snap && snap.states) || {}).filter((x) => x.running).length;
-      document.getElementById("tm-agents").textContent = `агентов: ${live}`;
+      document.getElementById("tm-agents").textContent = t("board.agents", { count: live });
     } catch { /* keep the last rendered state */ }
   }
 
@@ -515,7 +511,7 @@ window.Views.board = (() => {
       const original = e.target.textContent;
       e.target.disabled = true; e.target.textContent = "…";
       const r = await window.mf.runDemo();
-      if (!r.ok) note(r.error || "не удалось запустить демо");
+      if (!r.ok) note(r.error || t("board.demoFailed"));
       e.target.disabled = false; e.target.textContent = original;
     });
     document.getElementById("wiz-add").addEventListener("click", wizardRow);

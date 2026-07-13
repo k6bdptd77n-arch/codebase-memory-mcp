@@ -234,6 +234,7 @@ class InstallTests(Base):
         self.assertTrue((disc / "hooks" / "codex_reflect.py").exists())
         self.assertTrue((disc / "scripts" / "brain.py").exists())
         self.assertTrue((tgt / ".agents" / "skills" / "mindforge-workflow" / "SKILL.md").exists())
+        self.assertEqual((tgt / ".gitignore").read_text().splitlines().count(".fablize/"), 1)
         agents = (tgt / "AGENTS.md").read_text()
         self.assertIn(".fablize-disciplines/scripts/brain.py", agents)
         self.assertNotIn("` scripts/brain.py", agents)  # no un-rewritten in-repo path
@@ -259,6 +260,7 @@ class InstallTests(Base):
         codex = json.loads((tgt / ".codex" / "hooks.json").read_text())["hooks"]
         self.assertEqual(sum("codex_reflect.py" in json.dumps(x) for x in codex["Stop"]), 1)
         self.assertEqual(sum("codex_reflect.py" in json.dumps(x) for x in codex["UserPromptSubmit"]), 1)
+        self.assertEqual((tgt / ".gitignore").read_text().splitlines().count(".fablize/"), 1)
 
     def test_install_warns_when_no_settings(self):
         # fresh machine: no ~/.claude/settings.json → must NOT claim success on wiring

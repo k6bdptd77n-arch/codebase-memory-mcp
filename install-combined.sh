@@ -2,16 +2,21 @@
 # Combined installer: MindForge = codebase-memory-mcp (Memory) + fablize (Procedure + Brain).
 # One command sets up the core stack. Optional layers (Economy / Orchestration / GUI) are opt-in.
 #
-# Usage: bash install-combined.sh [--with-economy] [--with-crew] [--with-ui] [--all] [target-project-dir]
+# Usage: bash install-combined.sh [flags] [target-project-dir]
 #   default target : current directory
 #   default install: core layers only (Memory + Procedure + Brain)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-BIN="$ROOT/build/c/codebase-memory-mcp"
+BIN="${MINDFORGE_BIN:-$ROOT/build/c/codebase-memory-mcp}"
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 
 WITH_ECONOMY=0
 WITH_CREW=0
 WITH_UI=0
+AUTO_INDEX=1
+AUTO_INDEX_LIMIT=50000
+REFRESH_AGENTS=0
+CHECK_ONLY=0
 TARGET=""
 
 usage() {
@@ -30,27 +35,52 @@ Optional layers (opt-in):
   --with-crew      CrewAI orchestration   -> crew/.venv + pip install -r crew/requirements.txt
   --with-ui        Electron desktop GUI   -> cd mindforge-ui && npm install
   --all            install all optional layers above
+  --no-auto-index  do not enable automatic first-session indexing
+  --auto-index-limit N
+                   skip automatic indexing above N tracked files (default: 50000)
+  --refresh-agents re-run agent discovery even when Codex is already configured
+  --check           verify an existing installation without changing it
   -h, --help       show this help and exit
 
 Args:
   target-project-dir   where to apply the fablize disciplines (default: current directory)
 
-Each step is idempotent (safe to re-run). A summary of what was installed is printed at the end.
+The default is persistent and idempotent: Codex starts the MCP server for every
+session, the graph watcher follows indexed projects, and Brain state stays in the project.
 EOF
 }
 
-for arg in "$@"; do
+while [ "$#" -gt 0 ]; do
+  arg="$1"
   case "$arg" in
     --with-economy) WITH_ECONOMY=1 ;;
     --with-crew)    WITH_CREW=1 ;;
     --with-ui)      WITH_UI=1 ;;
     --all)          WITH_ECONOMY=1; WITH_CREW=1; WITH_UI=1 ;;
+    --no-auto-index) AUTO_INDEX=0 ;;
+    --auto-index-limit)
+      shift
+      [ "$#" -gt 0 ] || { echo "! --auto-index-limit requires a value" >&2; exit 2; }
+      AUTO_INDEX_LIMIT="$1"
+      case "$AUTO_INDEX_LIMIT" in *[!0-9]*|'') echo "! auto-index limit must be a positive integer" >&2; exit 2 ;; esac
+      [ "$AUTO_INDEX_LIMIT" -gt 0 ] || { echo "! auto-index limit must be greater than zero" >&2; exit 2; }
+      ;;
+    --refresh-agents) REFRESH_AGENTS=1 ;;
+    --check) CHECK_ONLY=1 ;;
     -h|--help)      usage; exit 0 ;;
     -*)             echo "! unknown flag: $arg" >&2; echo >&2; usage >&2; exit 2 ;;
     *)              TARGET="$arg" ;;
   esac
+  shift
 done
 TARGET="${TARGET:-$PWD}"
+
+if [ "$CHECK_ONLY" = "1" ]; then
+  exec env MINDFORGE_BIN="$BIN" CODEX_HOME="$CODEX_HOME" \
+    bash "$ROOT/scripts/mindforge-doctor.sh" "$TARGET"
+fi
+
+[ -d "$TARGET" ] || { echo "! target project does not exist: $TARGET" >&2; exit 2; }
 
 echo "=== MindForge — combined install ==="
 
@@ -59,22 +89,51 @@ echo "=== MindForge — combined install ==="
 # 1. Memory layer: GUI installs need the embedded graph variant; rebuild it even
 # when a standard binary already exists, otherwise the 3D-graph action can only 404.
 if [ "$WITH_UI" = "1" ]; then
-  echo "[core 1/3] Building the memory engine with embedded 3D UI..."
+  echo "[core 1/4] Building the memory engine with embedded 3D UI..."
   "$ROOT/scripts/build.sh" --with-ui
 elif [ ! -x "$BIN" ]; then
-  echo "[core 1/3] Building the memory engine (codebase-memory-mcp)..."
+  echo "[core 1/4] Building the memory engine (codebase-memory-mcp)..."
   "$ROOT/scripts/build.sh"
 else
-  echo "[core 1/3] Memory engine already built: $BIN"
+  echo "[core 1/4] Memory engine already built: $BIN"
 fi
 
-# 2. Memory layer: register the MCP server + agent instruction files.
-echo "[core 2/3] Registering the MCP server with your agents..."
-"$BIN" install -y || {
-  echo "  ! 'install' returned non-zero — configure the MCP server manually (see README)."; }
+# 2. Memory layer: register the MCP server + agent instruction files. Avoid a
+# redundant installer pass because development builds may legitimately migrate
+# derived graph databases when their schema changes.
+echo "[core 2/4] Registering the MCP server with your agents..."
+CODEX_CONFIG="$CODEX_HOME/config.toml"
+CODEX_AGENTS="$CODEX_HOME/AGENTS.md"
+if [ "$REFRESH_AGENTS" = "0" ] && [ -f "$CODEX_CONFIG" ] && [ -f "$CODEX_AGENTS" ] \
+   && grep -qF '[mcp_servers.codebase-memory-mcp]' "$CODEX_CONFIG" \
+   && grep -qF 'codebase-memory-mcp SessionStart' "$CODEX_CONFIG" \
+   && grep -qF '<!-- codebase-memory-mcp:start -->' "$CODEX_AGENTS"; then
+  echo "  = Codex registration already healthy; preserving existing graph databases"
+else
+  "$BIN" install -y
+fi
+
+# Auto-index is what makes a newly opened repository useful without a manual
+# setup step. Existing repositories are attached to the background watcher.
+if [ "$AUTO_INDEX" = "1" ]; then
+  "$BIN" config set auto_index true
+  "$BIN" config set auto_index_limit "$AUTO_INDEX_LIMIT"
+  echo "  ✓ auto-index enabled (tracked-file limit: $AUTO_INDEX_LIMIT)"
+else
+  echo "  = auto-index left unchanged"
+fi
+
+# Install the workflow globally as well as in the target repository. The global
+# copy makes the behavior available immediately in arbitrary local/remote repos;
+# the repository copy keeps Codex Cloud runs self-contained after checkout.
+echo "[core 3/4] Installing the global Codex workflow..."
+GLOBAL_SKILL="$CODEX_HOME/skills/mindforge-workflow"
+mkdir -p "$GLOBAL_SKILL"
+cp -R "$ROOT/fablize/skills/mindforge-workflow/." "$GLOBAL_SKILL/"
+echo "  ✓ $GLOBAL_SKILL"
 
 # 3. Procedure + Brain layer: apply the fablize disciplines to the target project.
-echo "[core 3/3] Applying the fablize procedure + brain layer..."
+echo "[core 4/4] Applying the fablize procedure + brain layer..."
 bash "$ROOT/fablize/install.sh" "$TARGET"
 
 # --- Optional layers ---------------------------------------------------------
@@ -111,6 +170,10 @@ if [ "$WITH_UI" = "1" ]; then
   fi
 fi
 
+echo "[verify] Checking the persistent Codex installation..."
+env MINDFORGE_BIN="$BIN" CODEX_HOME="$CODEX_HOME" \
+  bash "$ROOT/scripts/mindforge-doctor.sh" "$TARGET"
+
 echo
 echo "=== Done. MindForge install summary ==="
 echo "  Memory        : codebase-memory-mcp MCP tools (search_graph, trace_path, get_architecture, …)"
@@ -119,4 +182,6 @@ echo "  Brain         : cross-session memory (fablize/scripts/brain.py)"
 echo "  Economy       : $ECONOMY_STATUS"
 echo "  Orchestration : $CREW_STATUS"
 echo "  GUI           : $UI_STATUS"
-echo "  Re-run 'bash fablize/install.sh <dir>' to add the disciplines to another project."
+echo "  Health check  : bash install-combined.sh --check '$TARGET'"
+echo "  Another repo  : bash install-combined.sh /path/to/repository"
+echo "  Restart Codex once after the first global installation."

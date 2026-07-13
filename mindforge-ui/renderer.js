@@ -1,5 +1,6 @@
 "use strict";
 /* global Terminal, FitAddon */
+const t = (key, params) => window.I18N.t(key, params);
 // Coordinator: tabs, header layer lights, autopilot state, telemetry clock,
 // the integrated PTY terminal, and live refresh on every .fablize change.
 
@@ -63,7 +64,7 @@ term.loadAddon(fit);
 term.open(document.getElementById("term"));
 fit.fit();
 window.mf.onPtyData((d) => term.write(d));
-window.mf.onPtyExit(() => term.write("\r\n[shell exited]\r\n"));
+window.mf.onPtyExit(() => term.write(`\r\n[${t("runtime.shellExited")}]\r\n`));
 term.onData((d) => window.mf.ptyInput(d));
 term.onResize(({ cols, rows }) => window.mf.ptyResize(cols, rows));
 new ResizeObserver(() => { try { fit.fit(); } catch {} })
@@ -80,11 +81,11 @@ async function refreshLayers() {
       el.classList.toggle("warn", !!warn);
       document.getElementById(`light-${id}-v`).textContent = value;
     };
-    set("memory", !!l.memory, l.memory ? `${(l.memory.nodes / 1000).toFixed(1)}k узлов` : "офлайн");
+    set("memory", !!l.memory, l.memory ? t("runtime.nodes", { count: (l.memory.nodes / 1000).toFixed(1) }) : t("runtime.offline"));
     set("procedure", !!l.procedure,
-      l.procedure ? `${l.procedure.done}/${l.procedure.total}` : "нет плана",
+      l.procedure ? `${l.procedure.done}/${l.procedure.total}` : t("runtime.noPlan"),
       l.procedure && l.procedure.done < l.procedure.total);
-    set("brain", (l.brain || {}).facts > 0, `${(l.brain || {}).facts ?? 0} фактов`);
+    set("brain", (l.brain || {}).facts > 0, t("runtime.facts", { count: (l.brain || {}).facts ?? 0 }));
   } catch { /* keep the last rendered state */ }
 }
 
@@ -93,11 +94,11 @@ document.getElementById("open-graph").addEventListener("click", async () => {
   const button = document.getElementById("open-graph");
   const note = document.getElementById("tm-note");
   button.disabled = true;
-  note.textContent = "запускаю 3D-граф…";
+  note.textContent = t("runtime.graphStarting");
   try {
     const result = await window.mf.openGraph();
-    note.textContent = result?.ok ? "3D-граф открыт" : (result?.error || "3D-граф недоступен");
-  } catch { note.textContent = "не удалось запустить 3D-граф"; }
+    note.textContent = result?.ok ? t("runtime.graphOpened") : (result?.error || t("runtime.graphUnavailable"));
+  } catch { note.textContent = t("runtime.graphStartFailed"); }
   finally { button.disabled = false; }
 });
 
@@ -105,7 +106,7 @@ document.getElementById("open-graph").addEventListener("click", async () => {
 document.getElementById("reindex").addEventListener("click", async () => {
   const note = document.getElementById("tm-note");
   const r = await window.mf.reindex();
-  note.textContent = r && r.ok ? "индексирую проект…" : "движок памяти не собран";
+  note.textContent = r && r.ok ? t("runtime.indexing") : t("runtime.engineMissing");
   setTimeout(refreshLayers, 2500);
 });
 
@@ -142,8 +143,8 @@ function buildProjMenu(info) {
   if (info.recents.length) {
     const hr = document.createElement("div"); hr.className = "proj-sep"; projMenu.appendChild(hr);
   }
-  item("Открыть папку…", () => window.mf.projectOpen());
-  item("Новый проект…", () => showProjModal());
+  item(t("project.open"), () => window.mf.projectOpen());
+  item(t("project.new"), () => showProjModal());
 }
 
 function hideProjMenu({ focus = false } = {}) {
@@ -195,19 +196,19 @@ projModal.addEventListener("click", (e) => { if (e.target === projModal) hidePro
 async function submitProjCreate() {
   const name = projName.value.trim();
   projErr.classList.add("hidden");
-  if (!name) { projErr.textContent = "введите имя проекта"; projErr.classList.remove("hidden"); return; }
+  if (!name) { projErr.textContent = t("runtime.enterProject"); projErr.classList.remove("hidden"); return; }
   const btn = document.getElementById("proj-create-go");
-  btn.disabled = true; btn.textContent = "создаю…";
+  btn.disabled = true; btn.textContent = t("runtime.creating");
   try {
     const r = await window.mf.projectCreate(name);
     if (r.ok) {
       hideProjModal();
       if (r.warning) document.getElementById("tm-note").textContent = "⚠ " + r.warning;
     } else if (!r.canceled) {
-      projErr.textContent = r.error || ((r.steps || []).filter((s) => !s.ok).map((s) => `${s.name}: ${s.out}`).join("; ")) || "не удалось создать";
+      projErr.textContent = r.error || ((r.steps || []).filter((s) => !s.ok).map((s) => `${s.name}: ${s.out}`).join("; ")) || t("runtime.createFailed");
       projErr.classList.remove("hidden");
     }
-  } finally { btn.disabled = false; btn.textContent = "Создать"; }
+  } finally { btn.disabled = false; btn.textContent = t("runtime.create"); }
 }
 document.getElementById("proj-create-go").addEventListener("click", submitProjCreate);
 projName.addEventListener("keydown", (e) => { if (e.key === "Enter") submitProjCreate(); });
@@ -308,22 +309,22 @@ function buildActions(stories) {
   const tab = (name, label) => ({ label, k: `${SHORTCUT_MOD}${TAB_IDS.indexOf(name) + 1}`,
     run: () => activateTab(name, { focus: true }) });
   const acts = [
-    tab("board", "Доска"), tab("plan", "План"), tab("brain", "Мозг"),
-    tab("metrics", "Метрики"), tab("settings", "Настройки"), tab("terminal", "Терминал"),
-    { label: "Создать план", k: "действие", run: () => {
+    tab("board", t("nav.board")), tab("plan", t("nav.plan")), tab("brain", t("nav.brain")),
+    tab("metrics", t("nav.metrics")), tab("settings", t("nav.settings")), tab("terminal", t("nav.terminal")),
+    { label: t("palette.createPlan"), k: t("palette.action"), run: () => {
       document.querySelector('.tab[data-tab="board"]').click();
       document.getElementById("board-wizard-open").click(); } },
-    { label: "Открыть папку…", k: "проект", run: () => window.mf.projectOpen() },
-    { label: "Новый проект…", k: "проект", run: () => showProjModal() },
-    { label: "Открыть 3D-граф", k: "действие", run: () => window.mf.openGraph() },
-    { label: "Быстрая задача…", k: "действие", run: () => showQuick() },
+    { label: t("project.open"), k: t("palette.project"), run: () => window.mf.projectOpen() },
+    { label: t("project.new"), k: t("palette.project"), run: () => showProjModal() },
+    { label: t("palette.openGraph"), k: t("palette.action"), run: () => window.mf.openGraph() },
+    { label: t("palette.quick"), k: t("palette.action"), run: () => showQuick() },
     ...MODES.filter((m) => m !== mfMode).map((m) => ({
-      label: `Режим → ${{ manual: "Ручной", review: "Ревью", auto: "Авто" }[m]}`,
-      k: "режим", run: () => setMode(m) })),
+      label: t("palette.modeTo", { mode: t(`mode.${m}`) }),
+      k: t("palette.mode"), run: () => setMode(m) })),
   ];
   for (const g of stories)
     if (g && g.status !== "complete")
-      acts.push({ label: `Открыть ${g.id} · ${g.title}`, k: "стори",
+      acts.push({ label: t("palette.openStory", { id: g.id, title: g.title }), k: t("palette.story"),
         run: () => { document.querySelector('.tab[data-tab="board"]').click(); window.Views.board.openReview(g.id); } });
   return acts;
 }
@@ -336,7 +337,7 @@ function renderPal(q) {
   palItems = baseActions.filter((a) => !ql || fuzzy(a.label.toLowerCase(), ql));
   palSel = 0;
   palList.innerHTML = "";
-  if (!palItems.length) { palList.innerHTML = `<div class="pal-empty">ничего не найдено</div>`; return; }
+  if (!palItems.length) { palList.innerHTML = `<div class="pal-empty">${t("palette.empty")}</div>`; return; }
   palItems.forEach((a, i) => {
     const b = document.createElement("button");
     b.className = "pal-item" + (i === palSel ? " sel" : "");
@@ -425,11 +426,11 @@ setInterval(() => {
   try {
     const p = await window.mf.preflight();
     const missing = [];
-    if (!p.claude) missing.push("claude CLI не найден в PATH — установите Claude Code и перезапустите MindForge");
-    if (!p.git) missing.push("git не найден в PATH");
+    if (!p.claude) missing.push(t("preflight.noClaude"));
+    if (!p.git) missing.push(t("preflight.noGit"));
     if (!p.engineBuilt) missing.push(p.packaged
-      ? "движок памяти отсутствует в установленной сборке — переустановите MindForge"
-      : "движок памяти не собран");
+      ? t("preflight.noBundledEngine")
+      : t("preflight.noEngine"));
     if (!missing.length) return;
     const banner = document.getElementById("preflight-banner");
     document.getElementById("preflight-text").textContent = "⚠ " + missing.join(" · ");
@@ -439,11 +440,11 @@ setInterval(() => {
       action.classList.remove("hidden");
       action.addEventListener("click", () => {
         action.disabled = true;
-        action.textContent = "Команда готова";
+        action.textContent = t("preflight.commandReady");
         activateTab("terminal", { focus: true });
         const installDir = String(p.installDir || "").replace(/'/g, "'\\''");
         setTimeout(() => window.mf.ptyInput(`cd '${installDir}' && ./install-combined.sh --with-ui`), 120);
-        document.getElementById("tm-note").textContent = "команда подготовлена — нажмите Enter";
+        document.getElementById("tm-note").textContent = t("preflight.commandPrepared");
       }, { once: true });
     }
     document.getElementById("preflight-dismiss").addEventListener("click",
@@ -453,10 +454,18 @@ setInterval(() => {
 
 // ── boot + live refresh ──────────────────────────────────────────────────────
 for (const v of Object.values(window.Views)) v.init();
+window.addEventListener("mindforge-locale-changed", () => {
+  refreshProject();
+  refreshLayers();
+  for (const v of Object.values(window.Views)) if (v.refresh) v.refresh();
+  if (!palette.classList.contains("hidden")) renderPal(palInput.value);
+});
 const restoredTab = localStorage.getItem("mf-active-tab");
 if (TAB_IDS.includes(restoredTab)) activateTab(restoredTab, { persist: false });
 refreshLayers();
+let poller;
 window.mf.onChanged(() => {
+  poller?.activity();
   window.Views.board.refresh();
   refreshLayers();
   const active = document.querySelector(".tab.active").dataset.tab;
@@ -464,18 +473,25 @@ window.mf.onChanged(() => {
     window.Views[active].refresh();
 });
 
-// Polling fallback: fs.watch(recursive) can silently fail or drop events on some
-// platforms — a cheap ~4s tick keeps the active view and lights honest.
-// (main memoizes snapshot ~500ms, so this stays lightweight.)
-let pollBusy = false;
-setInterval(async () => {
-  if (pollBusy) return;
-  pollBusy = true;
-  try {
+// Polling fallback: pause entirely while hidden. Unchanged cycles back off
+// 4s → 8s → 16s → 30s; any push event or visible change resets to 4s.
+const pollSignature = () => [
+  document.querySelector(".tab.active")?.dataset.tab,
+  document.getElementById("board-brief")?.textContent,
+  document.getElementById("lanes")?.textContent,
+  document.getElementById("statusbar")?.textContent,
+].join("|");
+poller = window.PollCore.createAdaptivePoller({
+  isHidden: () => document.hidden,
+  run: async () => {
+    const before = pollSignature();
     const active = document.querySelector(".tab.active").dataset.tab;
     const view = window.Views[active];
     if (view && view.refresh) await view.refresh();
     if (active !== "board") await window.Views.board.refresh();  // statusbar plan/agents counters
     await refreshLayers();
-  } catch {} finally { pollBusy = false; }
-}, 4000);
+    return before !== pollSignature();
+  },
+});
+document.addEventListener("visibilitychange", () => poller.visibilityChanged());
+poller.start();

@@ -1,10 +1,11 @@
 "use strict";
-// Minimal i18n — no framework, a flat key→string dictionary per locale. Covers the STATIC
-// markup surface (titlebar, sidebar nav, section headers, static labels/placeholders) that a
-// first-time visitor sees; dynamic strings generated at runtime in views/*.js (guide text,
-// story status labels, notes) stay Russian for now — see fablize's ROADMAP.md step 9 for the
-// rest of that scope. EN is the default per the roadmap's "EN external surface" call.
-window.I18N = (() => {
+// Minimal i18n — no framework, a flat key→string dictionary per locale. Covers every
+// user-facing string in the runtime JS: static markup (titlebar, sidebar nav, labels)
+// plus dynamic strings built in main.js and views/*.js. EN is the default per the
+// roadmap's "EN external surface" call.
+// Dual-environment: `window.I18N` in the renderer, `module.exports` for the Electron
+// main process and node tests (there t() works without DOM/localStorage).
+const I18N = (() => {
   const DICT = {
     en: {
       "nav.board": "Board", "nav.plan": "Plan", "nav.brain": "Brain",
@@ -36,6 +37,110 @@ window.I18N = (() => {
       "quick.title": "Quick task",
       "quick.sub": "One request to one agent, right in the project folder — interactive, in the Terminal tab. No plan, no lanes, no ceremony.",
       "quick.go": "Run in terminal",
+      "main.thinking": "[{model}] thinking…",
+      "main.badStoryId": "invalid story id",
+      "main.alreadyRunning": "already running",
+      "main.noSuchProject": "no such project in the list",
+      "main.gateSkipped": "fablize/tests not found in the project — auto-gate skipped, acceptance by review",
+      "main.outsideProject": "The task reaches outside the project ({outside}). Stories only work with files inside this project. For one-off actions on your computer, open the Terminal tab — a plain claude without board limits.",
+      "main.openProject": "Open project",
+      "main.badProjectName": "invalid name: letters, digits, dot, dash, space; no / or \\",
+      "main.whereCreate": "Where to create “{name}”",
+      "main.createHere": "Create here",
+      "brain.unavailable": "Memory is temporarily unavailable. Switch to this tab again to retry.",
+      "brain.historyUnavailable": "Could not load history.", "brain.expandFact": "Click to expand the fact",
+      "brain.until": "until {date}", "brain.expandEpisode": "Click to expand the episode", "brain.today": "today",
+      "brain.searching": "Searching memory…", "brain.nothing": "Nothing found.",
+      "brain.searchFailed": "Search failed. Check the backend and try again.",
+      "brain.checking": "Checking stale facts…", "brain.checkDone": "Check complete.",
+      "brain.pruneTitle": "Delete stale facts?", "brain.pruneDetail": "All facts listed above will be deleted permanently.",
+      "brain.pruneDone": "Cleanup complete.", "brain.pruneFailed": "Could not check or clean memory. Try again.",
+      "metrics.none": "no telemetry yet", "metrics.plans": "plans", "metrics.stories": "stories started",
+      "metrics.completion": "completion rate", "metrics.escalations": "escalations", "metrics.agents": "agents",
+      "metrics.time": "time", "metrics.minutes": "{n}m", "metrics.cost": "cost", "metrics.facts": "facts",
+      "metrics.constraints": "constraints", "metrics.noBrief": "(no brief)",
+      "metrics.noSpec": "No locked spec — lock it with spec.py after clarifying the task.", "metrics.noEvents": "No events yet.",
+      "plan.reading": "The planner is reading memory, then thinking…", "plan.failed": "Could not build a plan.",
+      "plan.proposed": "Proposed stories: {count}", "plan.noAnswer": "The planner did not answer — try again.",
+      "plan.replaceTitle": "Replace the plan",
+      "plan.replaceDetail": "Creates a NEW flight plan (the current one will be replaced). Existing worktrees are not touched.",
+      "plan.saveFailed": "Could not save the plan — the proposal remains on screen.",
+      "runtime.shellExited": "shell exited", "runtime.nodes": "{count}k nodes", "runtime.offline": "offline",
+      "runtime.noPlan": "no plan", "runtime.facts": "{count} facts", "runtime.graphStarting": "starting 3D graph…",
+      "runtime.graphOpened": "3D graph opened", "runtime.graphUnavailable": "3D graph unavailable",
+      "runtime.graphStartFailed": "could not start 3D graph", "runtime.indexing": "indexing project…",
+      "runtime.engineMissing": "memory engine is not built", "runtime.enterProject": "enter a project name",
+      "runtime.creating": "creating…", "runtime.createFailed": "could not create", "runtime.create": "Create",
+      "palette.action": "action", "palette.project": "project", "palette.mode": "mode", "palette.story": "story",
+      "palette.createPlan": "Create plan", "palette.openGraph": "Open 3D graph", "palette.quick": "Quick task…",
+      "palette.modeTo": "Mode → {mode}", "palette.openStory": "Open {id} · {title}", "palette.empty": "nothing found",
+      "preflight.noClaude": "claude CLI was not found in PATH — install Claude Code and restart MindForge",
+      "preflight.noGit": "git was not found in PATH",
+      "preflight.noBundledEngine": "the memory engine is missing from the installed build — reinstall MindForge",
+      "preflight.noEngine": "the memory engine is not built", "preflight.commandReady": "Command ready",
+      "preflight.commandPrepared": "command prepared — press Enter",
+      "settings.role.brain": "Brain", "settings.role.brainDuty": "reviews agent diffs and guards the gate",
+      "settings.role.planner": "Planner", "settings.role.plannerDuty": "splits a feature into stories",
+      "settings.role.hand": "Hand", "settings.role.handDuty": "writes code in an isolated worktree",
+      "settings.inherit": "like session", "settings.unsaved": "there are unsaved changes",
+      "settings.cliRunner": "CLI runner", "settings.model": "Model", "settings.mcpServers": "MCP servers",
+      "settings.skills": "Skills", "settings.promptExtra": "Prompt addition",
+      "settings.promptPlaceholder": "optional — appended to the role system prompt", "settings.cliMissing": "{cli} was not found in PATH",
+      "settings.otherAi": "── other AI: enable a provider below ──",
+      "settings.enableProviders": "+ GPT / Ollama / OpenRouter — enable in “Models & providers”",
+      "settings.noMcp": "No MCP servers found — add one with <code>claude mcp add</code>", "settings.noSkills": "no skills found",
+      "settings.pluginCloud": "plugin/cloud", "settings.provider.ollama": "local models — free, no key",
+      "settings.provider.openai": "GPT models using your API key",
+      "settings.provider.openrouter": "one key — hundreds of models (Gemini, DeepSeek, Llama…)",
+      "settings.address": "Address", "settings.apiKey": "API key", "settings.modelList": "Models",
+      "settings.commaNames": "comma-separated names", "settings.findLocal": "Find local",
+      "settings.providerNote": "Models appear in the Planner and Brain selectors as “{provider} · name”.",
+      "settings.searching": "searching…", "settings.found": "found: {count}",
+      "settings.ollamaDown": "Ollama server is not responding — run `ollama serve`",
+      "settings.noServers": "no servers", "settings.config": "config", "settings.connected": "connected",
+      "settings.unavailable": "unavailable", "settings.session": "session",
+      "settings.headerRoles": "Brain·{brain} / Plan·{planner} / Hand·{hand}",
+      "settings.inventoryLoading": "MCP inventory is loading…", "settings.inventoryUnavailable": "MCP inventory unavailable",
+      "settings.saved": "saved — applies to the next agent launch", "settings.saveError": "error: {error}",
+      "board.state.pending": "waiting", "board.state.running": "in progress", "board.state.review": "in review",
+      "board.state.complete": "accepted", "board.state.failed": "failed", "board.state.blocked": "blocked", "board.state.in_progress": "active",
+      "board.flight.plan": "plan", "board.flight.code": "code", "board.flight.verify": "verify", "board.flight.review": "review", "board.flight.project": "in project",
+      "board.acceptedCount": "accepted {done}/{total}", "board.telemetry": "{commits} commits · {minutes}m",
+      "board.escalation": "⚠ escalation — {attempts} consecutive failures; a stronger model or a person is needed",
+      "board.runAgent": "▶ Run agent", "board.stop": "Stop", "board.review": "Review", "board.reviewOrder": "accept earlier stories first",
+      "board.log": "Log", "board.retry": "Retry", "board.agentAsks": "Agent asks: {question}",
+      "board.acceptedGroup": "Accepted into project ({count})", "board.runFailed": "could not start",
+      "board.stopTitle": "Stop agent", "board.stopDetail": "Interrupt the running agent {id}? Its draft will remain available for review.",
+      "board.logStarting": "(agent is starting — the log appears when claude begins writing)",
+      "board.failedState": "This story failed and cannot be accepted. Return to the board and click “Retry”, or rephrase the task.",
+      "board.completeState": "The work is already accepted into the project — no action is needed.",
+      "board.runningState": "The agent is still working — wait for it to finish.",
+      "board.patch": "=== patch{suffix}:", "board.patchTruncated": " (first 1500 lines shown)",
+      "board.collecting": "collecting evidence…", "board.collectFailed": "could not collect evidence — try again",
+      "board.acceptTitle": "Accept work {id}",
+      "board.acceptDetail": "Project tests will run first. On green, the work enters the project and the draft is removed. Red tests change nothing.",
+      "board.testing": "▸ running project tests…", "board.acceptEvidence": "accepted in MindForge Control",
+      "board.acceptDone": "✓ {id} accepted into project — {tail}", "board.rejectTitle": "Reject {id}",
+      "board.rejectDetail": "Marks the story failed; its draft remains and nothing enters the project.", "board.rejected": "rejected in review",
+      "board.autopilot": "autopilot", "board.autoChecking": "{label}: checking {id}…",
+      "board.reviewReady": "review {id}: {verdict} — open Review to merge", "board.autoResult": "{label} {id}: {verdict}",
+      "board.autoAccepted": "autopilot: {id} accepted into project ✓", "board.autoTestsFailed": "autopilot: {id} failed tests — left for manual review",
+      "board.guideStart": "Step 1 · Describe what to build below — the planner will split it into stories and agents will implement them.",
+      "board.guideReview": "Step 3 · {id} is waiting for review — inspect the changes and accept the work.", "board.reviewId": "Review {id}",
+      "board.guideRunning": "Step 2 · Agent in flight ({ids}) — live log is on the lane.{parallel}",
+      "board.guideParallel": " You can start the next story in parallel.",
+      "board.guidePending": "Step 2 · Start an agent for {id} — it will work in an isolated worktree.", "board.runId": "▶ Run {id}",
+      "board.guideFailed": "⚠ {id} failed — inspect the log and retry, or rephrase the story.",
+      "board.guideDone": "Mission complete ✓ — all stories are merged. Describe a new feature to start the next one.", "board.openPlan": "Open “Plan”",
+      "board.storyTitlePh": "name (kebab-case)", "board.removeStory": "remove story",
+      "board.storyObjectivePh": "task: which files may change and what should be produced", "board.verifyPh": "verification command (for example: npm test)",
+      "board.briefRequired": "brief is required", "board.storyFieldsRequired": "each story needs both a name and a task",
+      "board.badSeparator": "“::” is not allowed in a name", "board.storyRequired": "at least one story is required",
+      "board.goalsFailed": "goals.py create failed", "board.planCreateFailed": "could not create plan", "board.streamError": "error",
+      "board.composerReading": "The planner is reading project memory, then thinking…", "board.composerFailed": "could not do it — try rephrasing",
+      "board.composerProposed": "Proposed stories: {count} — review and accept", "board.composerNoAnswer": "The planner did not answer — try again",
+      "board.composerSaveFailed": "Could not save the plan — the proposal remains on screen.", "board.agents": "agents: {count}",
+      "board.demoFailed": "could not start demo",
     },
     ru: {
       "nav.board": "Доска", "nav.plan": "План", "nav.brain": "Мозг",
@@ -67,13 +172,121 @@ window.I18N = (() => {
       "quick.title": "Быстрая задача",
       "quick.sub": "Одно поручение одному агенту прямо в папке проекта — интерактивно, во вкладке «Терминал». Без плана, полос и церемоний.",
       "quick.go": "Запустить в терминале",
+      "main.thinking": "[{model}] думаю…",
+      "main.badStoryId": "некорректный id стори",
+      "main.alreadyRunning": "уже запущено",
+      "main.noSuchProject": "нет такого проекта в списке",
+      "main.gateSkipped": "fablize/tests не найден в проекте — авто-gate пропущен, приёмка по ревью",
+      "main.outsideProject": "Задача выходит за пределы проекта ({outside}). Стори работают только с файлами этого проекта. Для разовых действий на компьютере откройте вкладку «Терминал» — там обычный claude без ограничений доски.",
+      "main.openProject": "Открыть проект",
+      "main.badProjectName": "недопустимое имя: буквы, цифры, точка, дефис, пробел; без / и \\",
+      "main.whereCreate": "Где создать проект «{name}»",
+      "main.createHere": "Создать здесь",
+      "brain.unavailable": "Память временно недоступна. Переключитесь на вкладку ещё раз, чтобы повторить.",
+      "brain.historyUnavailable": "Не удалось загрузить историю.", "brain.expandFact": "Нажмите, чтобы раскрыть факт",
+      "brain.until": "до {date}", "brain.expandEpisode": "Нажмите, чтобы раскрыть эпизод", "brain.today": "сегодня",
+      "brain.searching": "Ищу в памяти…", "brain.nothing": "Ничего не найдено.",
+      "brain.searchFailed": "Не удалось выполнить поиск. Проверьте backend и попробуйте снова.",
+      "brain.checking": "Проверяю устаревшие факты…", "brain.checkDone": "Проверка завершена.",
+      "brain.pruneTitle": "Удалить устаревшие факты?", "brain.pruneDetail": "Все перечисленные выше факты будут удалены без возможности восстановления.",
+      "brain.pruneDone": "Очистка завершена.", "brain.pruneFailed": "Не удалось проверить или очистить память. Попробуйте снова.",
+      "metrics.none": "телеметрии пока нет", "metrics.plans": "планов", "metrics.stories": "сторей начато",
+      "metrics.completion": "доля завершения", "metrics.escalations": "эскалаций", "metrics.agents": "агенты",
+      "metrics.time": "время", "metrics.minutes": "{n}м", "metrics.cost": "стоимость", "metrics.facts": "факты",
+      "metrics.constraints": "ограничения", "metrics.noBrief": "(без брифа)",
+      "metrics.noSpec": "Спека не залочена — зафиксируйте её через spec.py после прояснения задачи.", "metrics.noEvents": "Событий пока нет.",
+      "plan.reading": "Планировщик читает память, затем думает…", "plan.failed": "Не удалось построить план.",
+      "plan.proposed": "Предложено сторей: {count}", "plan.noAnswer": "Планировщик не ответил — попробуйте ещё раз.",
+      "plan.replaceTitle": "Заменить план",
+      "plan.replaceDetail": "Создаёт НОВЫЙ план полёта (текущий будет заменён). Существующие worktree не трогаются.",
+      "plan.saveFailed": "Не удалось сохранить план — предложение оставлено на экране.",
+      "runtime.shellExited": "оболочка завершена", "runtime.nodes": "{count}k узлов", "runtime.offline": "офлайн",
+      "runtime.noPlan": "нет плана", "runtime.facts": "{count} фактов", "runtime.graphStarting": "запускаю 3D-граф…",
+      "runtime.graphOpened": "3D-граф открыт", "runtime.graphUnavailable": "3D-граф недоступен",
+      "runtime.graphStartFailed": "не удалось запустить 3D-граф", "runtime.indexing": "индексирую проект…",
+      "runtime.engineMissing": "движок памяти не собран", "runtime.enterProject": "введите имя проекта",
+      "runtime.creating": "создаю…", "runtime.createFailed": "не удалось создать", "runtime.create": "Создать",
+      "palette.action": "действие", "palette.project": "проект", "palette.mode": "режим", "palette.story": "стори",
+      "palette.createPlan": "Создать план", "palette.openGraph": "Открыть 3D-граф", "palette.quick": "Быстрая задача…",
+      "palette.modeTo": "Режим → {mode}", "palette.openStory": "Открыть {id} · {title}", "palette.empty": "ничего не найдено",
+      "preflight.noClaude": "claude CLI не найден в PATH — установите Claude Code и перезапустите MindForge",
+      "preflight.noGit": "git не найден в PATH",
+      "preflight.noBundledEngine": "движок памяти отсутствует в установленной сборке — переустановите MindForge",
+      "preflight.noEngine": "движок памяти не собран", "preflight.commandReady": "Команда готова",
+      "preflight.commandPrepared": "команда подготовлена — нажмите Enter",
+      "settings.role.brain": "Мозг", "settings.role.brainDuty": "ревьюит диффы агентов и охраняет gate",
+      "settings.role.planner": "Планировщик", "settings.role.plannerDuty": "раскладывает фичу на стори",
+      "settings.role.hand": "Рука", "settings.role.handDuty": "пишет код в изолированном worktree",
+      "settings.inherit": "как сессия", "settings.unsaved": "есть несохранённые изменения",
+      "settings.cliRunner": "CLI-исполнитель", "settings.model": "Модель", "settings.mcpServers": "MCP-серверы",
+      "settings.skills": "Скиллы", "settings.promptExtra": "Дополнение к промпту",
+      "settings.promptPlaceholder": "необязательно — добавится к системному промпту роли", "settings.cliMissing": "{cli} не найден в PATH",
+      "settings.otherAi": "── другие ИИ: включите провайдера ниже ──",
+      "settings.enableProviders": "+ GPT / Ollama / OpenRouter — включить в «Модели и провайдеры»",
+      "settings.noMcp": "MCP-серверов не найдено — добавьте через <code>claude mcp add</code>", "settings.noSkills": "скиллов не найдено",
+      "settings.pluginCloud": "плагин/облако", "settings.provider.ollama": "локальные модели — бесплатно, без ключа",
+      "settings.provider.openai": "GPT-модели по вашему API-ключу",
+      "settings.provider.openrouter": "один ключ — сотни моделей (Gemini, DeepSeek, Llama…)",
+      "settings.address": "Адрес", "settings.apiKey": "API-ключ", "settings.modelList": "Модели",
+      "settings.commaNames": "имена через запятую", "settings.findLocal": "Найти локальные",
+      "settings.providerNote": "Модели появятся в выпадающем списке у Планировщика и Мозга как «{provider} · имя».",
+      "settings.searching": "ищу…", "settings.found": "найдено: {count}",
+      "settings.ollamaDown": "сервер Ollama не отвечает — запустите `ollama serve`",
+      "settings.noServers": "серверов нет", "settings.config": "конфиг", "settings.connected": "подключён",
+      "settings.unavailable": "недоступен", "settings.session": "сессия",
+      "settings.headerRoles": "Мозг·{brain} / План·{planner} / Рука·{hand}",
+      "settings.inventoryLoading": "инвентарь MCP загружается…", "settings.inventoryUnavailable": "MCP-инвентарь недоступен",
+      "settings.saved": "сохранено — применится к следующему запуску агента", "settings.saveError": "ошибка: {error}",
+      "board.state.pending": "ожидание", "board.state.running": "в работе", "board.state.review": "на проверке",
+      "board.state.complete": "принято", "board.state.failed": "не удалась", "board.state.blocked": "заблокировано", "board.state.in_progress": "активна",
+      "board.flight.plan": "план", "board.flight.code": "код", "board.flight.verify": "проверка", "board.flight.review": "ревью", "board.flight.project": "в проект",
+      "board.acceptedCount": "принято {done}/{total}", "board.telemetry": "{commits} коммита · {minutes}м",
+      "board.escalation": "⚠ эскалация — {attempts} провала подряд; нужна модель сильнее или человек",
+      "board.runAgent": "▶ Запустить агента", "board.stop": "Остановить", "board.review": "Проверить", "board.reviewOrder": "по порядку: сначала примите более ранние стори",
+      "board.log": "Лог", "board.retry": "Повторить", "board.agentAsks": "Агент спрашивает: {question}",
+      "board.acceptedGroup": "Принято в проект ({count})", "board.runFailed": "не удалось запустить",
+      "board.stopTitle": "Остановить агента", "board.stopDetail": "Прервать работающего агента {id}? Его черновик работы сохранится — можно будет посмотреть, что он успел.",
+      "board.logStarting": "(агент стартует — лог появится, как только claude начнёт писать)",
+      "board.failedState": "Стори помечена неудачной — принять нельзя. Вернитесь на доску и нажмите «Повторить», либо переформулируйте задачу.",
+      "board.completeState": "Работа уже принята в проект — действий не требуется.", "board.runningState": "Агент ещё работает — дождитесь завершения.",
+      "board.patch": "=== патч{suffix}:", "board.patchTruncated": " (показаны первые 1500 строк)",
+      "board.collecting": "собираю доказательства…", "board.collectFailed": "не удалось собрать доказательства — попробуйте ещё раз",
+      "board.acceptTitle": "Принять работу {id}",
+      "board.acceptDetail": "Проверю тестами проекта — и на зелёных работа войдёт в проект, а черновик будет убран. Красные тесты ничего не изменят.",
+      "board.testing": "▸ проверяю тестами…", "board.acceptEvidence": "принято в MindForge Control",
+      "board.acceptDone": "✓ {id} принято в проект — {tail}", "board.rejectTitle": "Отклонить {id}",
+      "board.rejectDetail": "Пометит стори как неудачную; черновик работы сохранится — в проект ничего не попадёт.", "board.rejected": "отклонено на проверке",
+      "board.autopilot": "автопилот", "board.autoChecking": "{label}: проверяю {id}…",
+      "board.reviewReady": "ревью {id}: {verdict} — откройте «Проверить», чтобы слить", "board.autoResult": "{label} {id}: {verdict}",
+      "board.autoAccepted": "автопилот: {id} принято в проект ✓", "board.autoTestsFailed": "автопилот: {id} не прошло тесты — оставлено на ручную проверку",
+      "board.guideStart": "Шаг 1 · Опишите ниже, что построить — планировщик разложит на стори, агенты сделают.",
+      "board.guideReview": "Шаг 3 · {id} ждёт проверки — посмотрите изменения и примите работу.", "board.reviewId": "Проверить {id}",
+      "board.guideRunning": "Шаг 2 · Агент в полёте ({ids}) — живой лог на дорожке.{parallel}",
+      "board.guideParallel": " Можно запустить следующую стори параллельно.",
+      "board.guidePending": "Шаг 2 · Запустите агента на {id} — он будет работать в изолированном worktree.", "board.runId": "▶ Запустить {id}",
+      "board.guideFailed": "⚠ {id} провалена — посмотрите лог и повторите, либо переформулируйте стори.",
+      "board.guideDone": "Миссия завершена ✓ — все стори слиты. Начните следующую: опишите новую фичу.", "board.openPlan": "Открыть «План»",
+      "board.storyTitlePh": "название (kebab-case)", "board.removeStory": "убрать стори",
+      "board.storyObjectivePh": "задача: какие файлы можно трогать и что должно получиться", "board.verifyPh": "команда проверки (например: npm test)",
+      "board.briefRequired": "нужен brief", "board.storyFieldsRequired": "у каждой стори нужны и название, и задача",
+      "board.badSeparator": "«::» в названии недопустимо", "board.storyRequired": "нужна хотя бы одна стори",
+      "board.goalsFailed": "goals.py create не сработал", "board.planCreateFailed": "не удалось создать план", "board.streamError": "ошибка",
+      "board.composerReading": "планировщик читает память проекта, затем думает…", "board.composerFailed": "не получилось — попробуйте переформулировать",
+      "board.composerProposed": "предложено сторей: {count} — проверьте и примите", "board.composerNoAnswer": "планировщик не ответил — попробуйте ещё раз",
+      "board.composerSaveFailed": "не удалось сохранить план — предложение оставлено на экране", "board.agents": "агентов: {count}",
+      "board.demoFailed": "не удалось запустить демо",
     },
   };
 
   let locale = "en";
-  function t(key) { return (DICT[locale] && DICT[locale][key]) || DICT.en[key] || key; }
+  function t(key, params) {
+    let s = (DICT[locale] && DICT[locale][key]) || DICT.en[key] || key;
+    if (params) for (const [k, v] of Object.entries(params)) s = s.split(`{${k}}`).join(String(v));
+    return s;
+  }
 
   function apply() {
+    if (typeof document === "undefined") return;
     for (const el of document.querySelectorAll("[data-i18n]")) {
       const key = el.getAttribute("data-i18n");
       el.textContent = t(key);
@@ -91,16 +304,20 @@ window.I18N = (() => {
 
   function setLocale(l) {
     locale = DICT[l] ? l : "en";
-    try { localStorage.setItem("mf-locale", locale); } catch {}
+    try { if (typeof localStorage !== "undefined") localStorage.setItem("mf-locale", locale); } catch {}
     apply();
+    if (typeof window !== "undefined" && typeof CustomEvent !== "undefined")
+      window.dispatchEvent(new CustomEvent("mindforge-locale-changed", { detail: { locale } }));
   }
 
   function init() {
     let saved = "en";
-    try { saved = localStorage.getItem("mf-locale") || "en"; } catch {}
+    try { if (typeof localStorage !== "undefined") saved = localStorage.getItem("mf-locale") || "en"; } catch {}
     locale = DICT[saved] ? saved : "en";
     apply();
   }
 
-  return { t, apply, setLocale, init, get locale() { return locale; } };
+  return { t, apply, setLocale, init, get locale() { return locale; }, get dict() { return DICT; } };
 })();
+if (typeof window !== "undefined") window.I18N = I18N;
+if (typeof module !== "undefined" && module.exports) module.exports = I18N;

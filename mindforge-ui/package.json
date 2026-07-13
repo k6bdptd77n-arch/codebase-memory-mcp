@@ -7,8 +7,9 @@
   "scripts": {
     "start": "electron .",
     "shot": "electron . --shot",
-    "test": "node --test",
-    "check": "node --check main.js && node --check preload.js && node --check renderer.js && node --check projectcore.js && node --check providercore.js && node --check graphcore.js && node --check filecore.js && node --check i18n.js && node --check views/board.js && node --check views/brain.js && node --check views/metrics.js && node --check views/plan.js && node --check views/settings.js",
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node test/electron-e2e.js",
+    "check": "node --check main.js && node --check preload.js && node --check renderer.js && node --check projectcore.js && node --check providercore.js && node --check graphcore.js && node --check filecore.js && node --check i18n.js && node --check pollcore.js && node --check views/board.js && node --check views/brain.js && node --check views/metrics.js && node --check views/plan.js && node --check views/settings.js",
     "postinstall": "electron-rebuild -f -w node-pty",
     "dist": "electron-builder"
   },
@@ -34,6 +35,7 @@
       "providercore.js",
       "graphcore.js",
       "filecore.js",
+      "pollcore.js",
       "index.html",
       "styles.css",
       "views/**",

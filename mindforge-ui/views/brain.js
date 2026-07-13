@@ -4,6 +4,7 @@
 window.Views = window.Views || {};
 
 window.Views.brain = (() => {
+  const t = (key, params) => window.I18N.t(key, params);
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -13,9 +14,9 @@ window.Views.brain = (() => {
       [facts, eps] = await Promise.all([window.mf.brainFacts(), window.mf.episodes()]);
     } catch {
       if (!$("facts").children.length)
-        $("facts").innerHTML = '<div class="pal-empty">Память временно недоступна. Переключитесь на вкладку ещё раз, чтобы повторить.</div>';
+        $("facts").innerHTML = `<div class="pal-empty">${esc(t("brain.unavailable"))}</div>`;
       if (!$("episode-list").children.length)
-        $("episode-list").innerHTML = '<div class="pal-empty">Не удалось загрузить историю.</div>';
+        $("episode-list").innerHTML = `<div class="pal-empty">${esc(t("brain.historyUnavailable"))}</div>`;
       return;
     }
     $("brain-count").textContent = `· ${facts.length}`;
@@ -26,7 +27,7 @@ window.Views.brain = (() => {
     for (const f of facts) {
       const el = document.createElement("div");
       el.className = "fact";
-      el.title = "Нажмите, чтобы раскрыть факт";
+      el.title = t("brain.expandFact");
       // человеку показываем смысл (description), а не kebab-слаг — слаг уходит в подпись
       const title = (f.description || f.body || f.name || "").trim();
       el.innerHTML = `
@@ -34,7 +35,7 @@ window.Views.brain = (() => {
           <span class="fact-title">${esc(title)}</span>
           <span class="fact-badge ${esc(f.type || "project")}">${esc(f.type || "?")}</span>
           ${f.scope ? `<span class="fact-badge scope">${esc(f.scope)}</span>` : ""}
-          ${f.expires ? `<span class="fact-badge scope">до ${esc(f.expires)}</span>` : ""}
+          ${f.expires ? `<span class="fact-badge scope">${esc(t("brain.until", { date: f.expires }))}</span>` : ""}
         </div>
         <div class="fact-slug">${esc(f.name || "")}</div>
         <div class="fact-body">${esc(f.body || f.description || "")}</div>`;
@@ -56,7 +57,7 @@ window.Views.brain = (() => {
       }
       const el = document.createElement("div");
       el.className = "episode";
-      el.title = "Нажмите, чтобы раскрыть эпизод";
+      el.title = t("brain.expandEpisode");
       const goal = e.goal || e.trace || "";
       const out = e.lesson || e.result || (e.tools ? Object.keys(e.tools).join(" · ") : "");
       // без JS-обрезки: CSS клампит одной строкой, клик по эпизоду раскрывает полностью
@@ -69,12 +70,12 @@ window.Views.brain = (() => {
   }
 
   // «2026-07-07T03:14» → «сегодня» / «7 июл 2026» — заголовок дня в ленте эпизодов
-  const MON = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
   function dayLabel(ts) {
     const m = String(ts || "").slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return "";
-    if (m[0] === new Date().toISOString().slice(0, 10)) return "сегодня";
-    return `${+m[3]} ${MON[+m[2] - 1]} ${m[1]}`;
+    if (m[0] === new Date().toISOString().slice(0, 10)) return t("brain.today");
+    return new Intl.DateTimeFormat(window.I18N.locale, { day: "numeric", month: "short", year: "numeric" })
+      .format(new Date(`${m[0]}T00:00:00`));
   }
 
   async function recall() {
@@ -83,13 +84,13 @@ window.Views.brain = (() => {
     const out = $("brain-recall-out");
     const button = $("brain-search");
     out.classList.remove("hidden");
-    out.textContent = "Ищу в памяти…";
+    out.textContent = t("brain.searching");
     button.disabled = true;
     try {
       const r = await window.mf.brainRecall(q);
-      out.textContent = (r?.out || r?.err || "Ничего не найдено.").trim();
+      out.textContent = (r?.out || r?.err || t("brain.nothing")).trim();
     } catch {
-      out.textContent = "Не удалось выполнить поиск. Проверьте backend и попробуйте снова.";
+      out.textContent = t("brain.searchFailed");
     } finally {
       button.disabled = false;
     }
@@ -99,20 +100,19 @@ window.Views.brain = (() => {
     const out = $("brain-recall-out");
     const button = $("brain-prune");
     out.classList.remove("hidden");
-    out.textContent = "Проверяю устаревшие факты…";
+    out.textContent = t("brain.checking");
     button.disabled = true;
     try {
       const dry = await window.mf.brainPrune(false);
-      out.textContent = (dry?.out || dry?.err || "Проверка завершена.").trim();
+      out.textContent = (dry?.out || dry?.err || t("brain.checkDone")).trim();
       if (!/expired/i.test(dry?.out || "") || /nothing expired/i.test(dry?.out || "")) return;
-      if (await window.mf.confirm("Удалить устаревшие факты?",
-        "Все перечисленные выше факты будут удалены без возможности восстановления.")) {
+      if (await window.mf.confirm(t("brain.pruneTitle"), t("brain.pruneDetail"))) {
         const r = await window.mf.brainPrune(true);
-        out.textContent = (r?.out || r?.err || "Очистка завершена.").trim();
+        out.textContent = (r?.out || r?.err || t("brain.pruneDone")).trim();
         await refresh();
       }
     } catch {
-      out.textContent = "Не удалось проверить или очистить память. Попробуйте снова.";
+      out.textContent = t("brain.pruneFailed");
     } finally {
       button.disabled = false;
     }

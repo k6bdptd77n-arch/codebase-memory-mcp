@@ -15,6 +15,13 @@ cp "$HERE/scripts/"*.py  "$TARGET/.fablize-disciplines/scripts/"
 cp "$HERE/hooks/"*.py    "$TARGET/.fablize-disciplines/hooks/" 2>/dev/null || true
 echo "  ✓ packs + scripts + hooks → .fablize-disciplines/"
 
+# Runtime traces may briefly contain the current prompt and must never be committed.
+GITIGNORE="$TARGET/.gitignore"
+if ! grep -qxF '.fablize/' "$GITIGNORE" 2>/dev/null; then
+  { [ ! -s "$GITIGNORE" ] || printf '\n'; printf '%s\n' '# MindForge runtime state' '.fablize/'; } >> "$GITIGNORE"
+  echo "  ✓ runtime state ignored → .gitignore"
+fi
+
 # Codex discovers repository skills from .agents/skills. Keep the always-loaded
 # AGENTS block short and place the complete closed-loop workflow behind progressive disclosure.
 SKILL_SRC="$HERE/skills/mindforge-workflow"

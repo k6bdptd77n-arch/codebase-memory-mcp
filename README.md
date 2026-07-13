@@ -92,6 +92,26 @@ git clone https://github.com/k6bdptd77n-arch/codebase-memory-mcp.git && cd codeb
 ```
 Add optional layers with `--with-economy` (imba), `--with-crew` (CrewAI), `--with-ui` (Electron GUI), or `--all`. Run `bash install-combined.sh --help` for details.
 
+### Persistent Codex setup
+
+The combined installer now configures the full closed loop by default:
+
+```bash
+bash install-combined.sh /path/to/project
+bash install-combined.sh --check /path/to/project
+```
+
+- **Every Codex session:** the global MCP entry starts the memory engine; no separate daemon is required.
+- **Every new repository:** `auto_index=true` indexes it on first connection (up to 50,000 tracked files by default).
+- **Every indexed repository:** the MCP process attaches its change watcher for incremental freshness.
+- **Every completed Codex turn:** project-local prompt/stop hooks feed a factual trace to the persistent Brain.
+- **Every machine:** the workflow is copied to the global Codex skill directory; a repository copy is also installed so the behavior travels with a trusted cloud checkout.
+- **Every reinstall:** healthy Codex registration is reused, avoiding needless graph-database migrations; `--refresh-agents` forces full agent discovery when needed.
+
+Use `--auto-index-limit N` for larger repositories or `--no-auto-index` to leave the current setting unchanged. Restart Codex once after the first global installation. To repair a failed health check, rerun the first command; installation is additive and idempotent.
+
+Persistent data is split deliberately: structural graphs live in the engine cache, reusable Brain facts live in `.fablize/brain/` and `~/.fablize/brain/`, and the repository skill/runtime lives under `.agents/` and `.fablize-disciplines/`. Runtime traces under `.fablize/` are automatically excluded from Git.
+
 **Engine only** (upstream binary — no procedure/brain layers):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash

@@ -7,33 +7,34 @@
 window.Views = window.Views || {};
 
 window.Views.settings = (() => {
+  const t = (key, params) => window.I18N.t(key, params);
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   const ROLES = [
-    { id: "brain", icon: "◉", title: "Мозг", duty: "ревьюит диффы агентов и охраняет gate", think: true },
-    { id: "planner", icon: "◈", title: "Планировщик", duty: "раскладывает фичу на стори", think: true },
-    { id: "hand", icon: "▶", title: "Рука", duty: "пишет код в изолированном worktree", think: false },
+    { id: "brain", icon: "◉", title: "settings.role.brain", duty: "settings.role.brainDuty", think: true },
+    { id: "planner", icon: "◈", title: "settings.role.planner", duty: "settings.role.plannerDuty", think: true },
+    { id: "hand", icon: "▶", title: "settings.role.hand", duty: "settings.role.handDuty", think: false },
   ];
   const CLAUDE_MODELS = ["inherit", "haiku", "sonnet", "opus"];
-  const MODEL_LABEL = { inherit: "как сессия", haiku: "Haiku", sonnet: "Sonnet", opus: "Opus" };
+  const modelLabel = (model) => model === "inherit" ? t("settings.inherit") : ({ haiku: "Haiku", sonnet: "Sonnet", opus: "Opus" }[model] || model);
   const PROVIDERS = [
-    { id: "ollama", title: "Ollama", hint: "локальные модели — бесплатно, без ключа", keyless: true },
-    { id: "openai", title: "OpenAI", hint: "GPT-модели по вашему API-ключу" },
-    { id: "openrouter", title: "OpenRouter", hint: "один ключ — сотни моделей (Gemini, DeepSeek, Llama…)" },
+    { id: "ollama", title: "Ollama", hint: "settings.provider.ollama", keyless: true },
+    { id: "openai", title: "OpenAI", hint: "settings.provider.openai" },
+    { id: "openrouter", title: "OpenRouter", hint: "settings.provider.openrouter" },
   ];
 
   let cfg = null, inv = null, dirty = false;
 
   function markDirty() {
     dirty = true;
-    $("crew-status").textContent = "есть несохранённые изменения";
+    $("crew-status").textContent = t("settings.unsaved");
     $("crew-save").disabled = false;
   }
 
   // модели, доступные думающим ролям: клод-алиасы + модели включённых провайдеров
   function thinkModels() {
-    const out = CLAUDE_MODELS.map((m) => ({ v: m, label: MODEL_LABEL[m] }));
+    const out = CLAUDE_MODELS.map((m) => ({ v: m, label: modelLabel(m) }));
     for (const p of PROVIDERS) {
       const pc = cfg.providers[p.id];
       if (pc && pc.enabled) for (const m of pc.models || [])
@@ -50,18 +51,18 @@ window.Views.settings = (() => {
     el.innerHTML = `
       <div class="role-head">
         <span class="role-icon">${role.icon}</span>
-        <span class="role-title">${role.title}</span>
-        <span class="role-duty">${role.duty}</span>
+        <span class="role-title">${t(role.title)}</span>
+        <span class="role-duty">${t(role.duty)}</span>
       </div>
-      ${role.think ? "" : `<div class="role-sec-title">CLI-исполнитель</div><div class="cli-seg model-seg"></div>`}
-      <div class="role-sec-title">Модель</div>
+      ${role.think ? "" : `<div class="role-sec-title">${t("settings.cliRunner")}</div><div class="cli-seg model-seg"></div>`}
+      <div class="role-sec-title">${t("settings.model")}</div>
       <div class="model-row"></div>
-      <div class="role-sec-title">MCP-серверы</div>
+      <div class="role-sec-title">${t("settings.mcpServers")}</div>
       <div class="toggles mcp-toggles"></div>
-      <div class="role-sec-title">Скиллы</div>
+      <div class="role-sec-title">${t("settings.skills")}</div>
       <div class="toggles skill-toggles"></div>
-      <div class="role-sec-title">Дополнение к промпту</div>
-      <textarea class="role-prompt" rows="2" placeholder="необязательно — добавится к системному промпту роли"></textarea>`;
+      <div class="role-sec-title">${t("settings.promptExtra")}</div>
+      <textarea class="role-prompt" rows="2" placeholder="${t("settings.promptPlaceholder")}"></textarea>`;
 
     // выбор CLI для Руки (codex/aider — если установлены)
     if (!role.think) {
@@ -71,7 +72,7 @@ window.Views.settings = (() => {
         b.className = "seg" + ((rc.cli || "claude") === cli ? " on" : "");
         b.textContent = cli;
         window.mf.cliAvailable(cli).then((ok) => {
-          if (!ok && cli !== "claude") { b.disabled = true; b.title = `${cli} не найден в PATH`; }
+          if (!ok && cli !== "claude") { b.disabled = true; b.title = t("settings.cliMissing", { cli }); }
         });
         b.addEventListener("click", () => {
           rc.cli = cli;
@@ -86,7 +87,7 @@ window.Views.settings = (() => {
     const mr = el.querySelector(".model-row");
     const sel = document.createElement("select");
     sel.className = "model-select";
-    const opts = role.think ? thinkModels() : CLAUDE_MODELS.map((m) => ({ v: m, label: MODEL_LABEL[m] }));
+    const opts = role.think ? thinkModels() : CLAUDE_MODELS.map((m) => ({ v: m, label: modelLabel(m) }));
     for (const o of opts) {
       const op = document.createElement("option");
       op.value = o.v; op.textContent = o.label;
@@ -96,7 +97,7 @@ window.Views.settings = (() => {
     if (role.think && opts.length === CLAUDE_MODELS.length) {
       const op = document.createElement("option");
       op.disabled = true;
-      op.textContent = "── другие ИИ: включите провайдера ниже ──";
+      op.textContent = t("settings.otherAi");
       sel.appendChild(op);
     }
     sel.addEventListener("change", () => { rc.model = sel.value; markDirty(); });
@@ -104,7 +105,7 @@ window.Views.settings = (() => {
     if (role.think) {
       const hint = document.createElement("button");
       hint.className = "model-hint";
-      hint.textContent = "+ GPT / Ollama / OpenRouter — включить в «Модели и провайдеры»";
+      hint.textContent = t("settings.enableProviders");
       hint.addEventListener("click", () => document.querySelector('.snav[data-sec="models"]').click());
       mr.appendChild(hint);
     }
@@ -120,13 +121,13 @@ window.Views.settings = (() => {
     };
     const mcpBox = el.querySelector(".mcp-toggles");
     if (!inv.mcp.length) mcpBox.innerHTML = `<div class="toggles-empty">${invNote(
-      "MCP-серверов не найдено — добавьте через <code>claude mcp add</code>")}</div>`;
+      t("settings.noMcp"))}</div>`;
     for (const s of inv.mcp)
       toggleRow(mcpBox, s.name, rc.mcp,
         `<i class="mcp-dot ${s.connected ? "ok" : ""}"></i><span class="tg-name">${esc(s.name)}</span>` +
-        (s.defined ? "" : '<span class="tg-src">плагин/облако</span>'));
+        (s.defined ? "" : `<span class="tg-src">${t("settings.pluginCloud")}</span>`));
     const skBox = el.querySelector(".skill-toggles");
-    if (!inv.skills.length) skBox.innerHTML = `<div class="toggles-empty">${invNote("скиллов не найдено")}</div>`;
+    if (!inv.skills.length) skBox.innerHTML = `<div class="toggles-empty">${invNote(t("settings.noSkills"))}</div>`;
     for (const s of inv.skills)
       toggleRow(skBox, s.name, rc.skills,
         `<span class="tg-name" title="${esc(s.description)}">${esc(s.name)}</span>` +
@@ -150,15 +151,15 @@ window.Views.settings = (() => {
           <span class="tg-track"><span class="tg-thumb"></span></span>
           <span class="prov-title">${p.title}</span>
         </label>
-        <span class="prov-hint">${p.hint}</span>
+        <span class="prov-hint">${t(p.hint)}</span>
         <span class="prov-status"></span>
       </div>
       <div class="prov-body ${pc.enabled ? "" : "hidden"}">
-        <div class="prov-row"><span>Адрес</span><input class="p-base" value="${esc(pc.base)}" spellcheck="false" /></div>
-        ${p.keyless ? "" : `<div class="prov-row"><span>API-ключ</span><input class="p-key" type="password" value="${esc(pc.key)}" placeholder="sk-…" spellcheck="false" /></div>`}
-        <div class="prov-row"><span>Модели</span><input class="p-models" value="${esc((pc.models || []).join(", "))}" placeholder="имена через запятую" spellcheck="false" />
-          ${p.id === "ollama" ? '<button class="btn ghost small p-scan">Найти локальные</button>' : ""}</div>
-        <div class="prov-note">Модели появятся в выпадающем списке у Планировщика и Мозга как «${p.title} · имя».</div>
+        <div class="prov-row"><span>${t("settings.address")}</span><input class="p-base" value="${esc(pc.base)}" spellcheck="false" /></div>
+        ${p.keyless ? "" : `<div class="prov-row"><span>${t("settings.apiKey")}</span><input class="p-key" type="password" value="${esc(pc.key)}" placeholder="sk-…" spellcheck="false" /></div>`}
+        <div class="prov-row"><span>${t("settings.modelList")}</span><input class="p-models" value="${esc((pc.models || []).join(", "))}" placeholder="${t("settings.commaNames")}" spellcheck="false" />
+          ${p.id === "ollama" ? `<button class="btn ghost small p-scan">${t("settings.findLocal")}</button>` : ""}</div>
+        <div class="prov-note">${t("settings.providerNote", { provider: p.title })}</div>
       </div>`;
     const enable = el.querySelector(".prov-enable input");
     enable.addEventListener("change", () => {
@@ -176,14 +177,14 @@ window.Views.settings = (() => {
     const scan = el.querySelector(".p-scan");
     if (scan) scan.addEventListener("click", async () => {
       const st = el.querySelector(".prov-status");
-      st.textContent = "ищу…";
+      st.textContent = t("settings.searching");
       const r = await window.mf.ollamaModels();
       if (r.ok && r.models.length) {
         pc.models = r.models;
         el.querySelector(".p-models").value = r.models.join(", ");
-        st.textContent = `найдено: ${r.models.length}`;
+        st.textContent = t("settings.found", { count: r.models.length });
         markDirty(); rerenderCrew();
-      } else st.textContent = "сервер Ollama не отвечает — запустите `ollama serve`";
+      } else st.textContent = t("settings.ollamaDown");
     });
     return el;
   }
@@ -197,14 +198,14 @@ window.Views.settings = (() => {
   function renderMcpList() {
     const box = $("mcp-list");
     box.innerHTML = "";
-    if (!inv.mcp.length) { box.innerHTML = `<div class="toggles-empty">${invNote("серверов нет")}</div>`; return; }
+    if (!inv.mcp.length) { box.innerHTML = `<div class="toggles-empty">${invNote(t("settings.noServers"))}</div>`; return; }
     for (const s of inv.mcp) {
       const row = document.createElement("div");
       row.className = "mcp-row";
       row.innerHTML = `<i class="mcp-dot ${s.connected ? "ok" : ""}"></i>
         <span class="tg-name">${esc(s.name)}</span>
-        <span class="tg-src">${s.defined ? "конфиг" : "плагин/облако"}</span>
-        <span class="mcp-state">${s.connected ? "подключён" : "недоступен"}</span>`;
+        <span class="tg-src">${s.defined ? t("settings.config") : t("settings.pluginCloud")}</span>
+        <span class="mcp-state">${s.connected ? t("settings.connected") : t("settings.unavailable")}</span>`;
       box.appendChild(row);
     }
   }
@@ -219,14 +220,14 @@ window.Views.settings = (() => {
   function headerBadge() {
     const b = $("crew-badge");
     if (!b || !cfg) return;
-    const short = (m) => (!m || m === "inherit") ? "сессия" : m.includes("/") ? m.split("/")[1].slice(0, 12) : m;
-    b.textContent = `Мозг·${short(cfg.roles.brain.model)} / План·${short(cfg.roles.planner.model)} / Рука·${cfg.roles.hand.cli && cfg.roles.hand.cli !== "claude" ? cfg.roles.hand.cli : short(cfg.roles.hand.model)}`;
+    const short = (m) => (!m || m === "inherit") ? t("settings.session") : m.includes("/") ? m.split("/")[1].slice(0, 12) : m;
+    b.textContent = t("settings.headerRoles", { brain: short(cfg.roles.brain.model), planner: short(cfg.roles.planner.model), hand: cfg.roles.hand.cli && cfg.roles.hand.cli !== "claude" ? cfg.roles.hand.cli : short(cfg.roles.hand.model) });
   }
 
   // inv states: null → not asked yet; {loading:true} → mcp list in flight;
   // {failed:true} → claude mcp list не ответил. Роль-карточки рендерятся сразу.
-  const invNote = (fallback) => inv && inv.loading ? "инвентарь MCP загружается…"
-    : inv && inv.failed ? "MCP-инвентарь недоступен" : fallback;
+  const invNote = (fallback) => inv && inv.loading ? t("settings.inventoryLoading")
+    : inv && inv.failed ? t("settings.inventoryUnavailable") : fallback;
 
   let invPending = false;
   async function refresh() {
@@ -256,9 +257,9 @@ window.Views.settings = (() => {
     if (r.ok) {
       dirty = false;
       $("crew-save").disabled = true;
-      $("crew-status").textContent = "сохранено — применится к следующему запуску агента";
+      $("crew-status").textContent = t("settings.saved");
       headerBadge();
-    } else $("crew-status").textContent = "ошибка: " + (r.error || "");
+    } else $("crew-status").textContent = t("settings.saveError", { error: r.error || "" });
   }
 
   function applyTheme(t) {
@@ -277,10 +278,12 @@ window.Views.settings = (() => {
       card.addEventListener("click", () => applyTheme(card.dataset.theme));
     if (window.I18N) {
       window.I18N.init();
+      window.mf.setLocale(window.I18N.locale);
       for (const btn of document.querySelectorAll(".lang-seg button")) {
         btn.classList.toggle("on", btn.dataset.locale === window.I18N.locale);
-        btn.addEventListener("click", () => {
+        btn.addEventListener("click", async () => {
           window.I18N.setLocale(btn.dataset.locale);
+          await window.mf.setLocale(btn.dataset.locale);
           document.querySelectorAll(".lang-seg button").forEach((b) =>
             b.classList.toggle("on", b.dataset.locale === btn.dataset.locale));
         });

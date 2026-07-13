@@ -1,57 +1,73 @@
-# MindForge / fablize-memory-mcp — полный review
+# MindForge / fablize-memory-mcp — итоговый review
 
-**Дата:** 2026-07-11 · **ветка:** `fablize-integration` · **режим:** read-only review текущего дерева, включая незакоммиченный diff.
+**Дата:** 2026-07-13 · **ветка:** `fablize-integration` · **объём:** постоянная установка для Codex, procedure/brain-слои, MindForge GUI и полный локальный verification loop.
 
-## Вердикт
+## Итог
 
-Архитектура здравая: upstream C-ядро изолировано от собственных слоёв `fablize/`, `crew/`, `mindforge-ui/`; verify-gate и атомарное состояние хорошо покрыты тестами; Electron использует `contextIsolation`, sandbox, узкий preload API, валидацию идентификаторов/путей, native confirm и шифрование ключей. **P0 нет.** Проект пригоден для разработки и пилота, но ещё не готов к обещанию «установил и всё работает»: остаются P1 вокруг Electron e2e, watchdog и проверки релизного артефакта.
+Проект теперь полезен как постоянный слой над Codex, а не как отдельный «сайт-секретарь»:
 
-## Проверено
+- Memory даёт агенту структурный граф проекта и уменьшает повторное чтение кода.
+- Procedure заставляет работать через план, доказательства и ограниченный closed loop.
+- Brain сохраняет проверенные факты и уроки между сессиями.
+- MindForge GUI управляет проектом, планом, задачами, approve/reject, терминалом и состоянием этих слоёв.
 
-| Проверка | Результат |
+После `install-combined.sh` интеграция сохраняется после перезапуска: MCP зарегистрирован в Codex, graph-first инструкции и skill установлены глобально, новый репозиторий индексируется автоматически, а `mindforge-doctor.sh` проверяет фактическое состояние.
+
+## Что реализовано
+
+### Постоянная интеграция
+
+- Идемпотентный combined-installer, режим `--check` и подробный doctor.
+- Глобальный и project-local MindForge skill для Codex.
+- `AGENTS.md`, portable `.fablize-disciplines/`, `.agents/` и Codex hooks.
+- Безопасный auto-index с лимитом файлов; private runtime state исключён из git.
+- Эволюция skill только через reviewable candidate, baseline/candidate evaluation и явное применение — модель не «переписывает себя» скрытно.
+
+### GUI и производительность
+
+- Runtime-строки вынесены в общий RU/EN i18n-слой; языковая полнота статического HTML сознательно не считается блокером.
+- Polling теперь останавливается в скрытом окне, использует backoff 4→8→16→30 секунд и сбрасывается при активности/изменении.
+- Metrics subprocess дедуплицируется и кешируется; кеш очищается при смене проекта.
+- IPC contract test проверяет соответствие preload API обработчикам main-процесса.
+- Реальный скрытый Electron E2E создаёт временный git-проект, создаёт план, принимает G001, отклоняет G002, проверяет merge и receipt, затем удаляет временные данные.
+
+### Документация
+
+- README и INTEGRATION описывают назначение, установку, Codex workflow и ограничения.
+- Добавлен версионируемый `CHANGELOG.md`.
+
+## Проверено в этой сессии
+
+| Уровень | Результат |
 |---|---|
-| Граф архитектуры | 14 427 узлов / 50 659 рёбер; C-core и fork-слои разделены |
-| `fablize` | **141/141** unittest |
-| Graph UI | **3/3** RPC-теста; production build OK |
-| Graph UI bundle | startup **257.9 KiB** / бюджет 350 KiB; lazy GraphTab 1.12 MiB (314 KiB gzip) |
-| MindForge UI | **21/21** Node-тест; JS syntax check; Electron screenshots 1560×940 и 900×650 |
-| npm | offline audit: 0 известных уязвимостей |
-| Git | 28 tracked-файлов + новые test/core-модули; изменения не закоммичены |
-| Локальный runtime | `build/c/codebase-memory-mcp` отсутствует — Memory offline до сборки |
-| C full suite | в предыдущем ASan/UBSan-прогоне всё прошло, кроме `test_parent_watchdog.sh` на macOS: ребёнок переживает смерть родителя |
+| Knowledge graph | **14 868 узлов / 52 268 рёбер**; MCP-запросы работают после перезапуска |
+| Python (`fablize` + installer) | **149/149 passed** |
+| MindForge UI unit/contract | **30/30 passed** |
+| MindForge UI syntax | `npm run check` — passed |
+| Electron E2E | create → plan → approve → reject; merge + receipt — passed |
+| Graph UI | **3/3 passed** |
+| Постоянная установка | `install-combined.sh --check` — **healthy** |
+| C core | ASan/UBSan test-runner — passed; production binary собран |
+| Git hygiene | `git diff --check` — passed |
 
-## Что уже улучшено в текущем diff
+Первый C-прогон внутри файловой песочницы дал массовый `phase=dump`: тесты без явного `db_path` не могли писать временные SQLite-графы в системный cache. Повтор официального `scripts/test.sh` вне песочницы подтвердил, что это ограничение окружения, а не дефект кода.
 
-- MindForge: command palette, shortcuts, focus/ARIA, responsive layout, понятные loading/error states, onboarding сборки, визуальные regression-снимки.
-- MindForge core: 21 тест на project creation/boundaries, provider HTTP, atomic files и graph lifecycle; закрыт обход `../…`/Windows path.
-- Provider HTTP: 30-секундный timeout, http/https validation, JSON/response-size limits.
-- 3D-граф: start/probe/reuse/stop supervisor; installer и release собирают `--with-ui` engine.
-- Настройки, preferences и merge receipts пишутся атомарно через fsync + rename.
-- Graph UI: lazy-load тяжёлого графа, стартовый bundle-budget, RPC-тесты, удаление дублей.
-- CI: UI build/check добавлены в PR gate; `clean.sh` больше не удаляет tracked/generated source и зависимости.
+## Оставшиеся риски
 
-## Findings
-
-| Приоритет | Проблема / доказательство | Рекомендация |
+| Приоритет | Риск | Следующее действие |
 |---|---|---|
-| **P1** | Pure/main helpers теперь покрыты 21 тестом, но критические renderer/IPC approve→verify→merge, plan и settings потоки всё ещё не проходят реальный Electron e2e. | 1 Electron e2e-smoke под `xvfb`: create project → plan → reject/approve; отдельно IPC contract tests с mock main/preload. |
-| **P1** | macOS parent-watchdog красный: возможен orphan MCP-процесс. C-core должен оставаться byte-identical upstream. | Исправить через upstream PR; до принятия — явно документировать риск/cleanup. Fork-патч в core делать только после отдельного решения отказаться от invariant. |
-| **P1** | Release не доказывает устанавливаемость: нет запуска собранного `.app`/AppImage, подпись опциональна, mac matrix фактически arm64; текущий `.app` 498 MiB, из них binary 258 MiB (DMG 132 MiB). | Artifact smoke-test, x64/arm64 matrix, обязательная signing/notarization политика для stable, strip/symbol split и size-budget. |
-| **P2** | EN заявлен default, но в runtime JS остаётся ~234 строк с русским текстом: новая EN-сессия смешивает языки. | Все user-facing строки и titles перенести в `i18n.js`; добавить тест полноты ключей RU/EN. |
-| **P2** | GraphTab всё ещё 1.12 MiB и покрыт только RPC-тестами. | Разделить Three.js/vendor и panels; тесты фильтров, selection и empty/error states; lazy chunk-budget отдельно от startup. |
-| **P2** | PR UI-job использует `npm ci --ignore-scripts`, поэтому `node-pty` и реальный Electron startup не проверяются; release теперь гоняет test/check, но не запускает artifact. | Отдельный Linux Electron smoke с rebuild+xvfb; проверять packaged preload/native module ABI. |
-| **P2** | MindForge README синхронизирован, но корневой roadmap/релизная история не заменяют пользовательский changelog. | Добавить `CHANGELOG.md`; генерировать screenshots из `npm run shot` для релиза. |
-| **P2** | Нет Dependabot/Renovate и npm audit gate; security workflow pin-ит actions по SHA, новый UI-job — только по тегам. | Dependabot для двух lockfile; online `npm audit`/dependency-review; единая SHA-pin политика actions. |
-| **P2** | Постоянный polling каждые 4 с обновляет активный view и board даже при скрытом окне; metrics может регулярно запускать Python. | Пауза при hidden/minimized, adaptive backoff 4→30 с, event-first refresh и дедупликация subprocess. |
-| **P3** | `main.js` 844 строк, `renderer.js` 471, `board.js` 540; глобальные IIFE усложняют тестирование. | После тестов разделить на IPC services, process supervisor, project service и view controllers; не делать big-bang rewrite. |
-| **P3** | Архитектурный hotspot `cbm_extract_imports`: cyclomatic 83 / cognitive 164; это upstream core. | Не рефакторить в fork. Вынести предложение и benchmarks upstream; локально только отслеживать regressions. |
+| **P1** | macOS parent-watchdog: production child переживает смерть тестового parent. C-core оставлен без fork-патча. | Исправить upstream и затем обновить vendored core. До этого doctor/cleanup должны явно показывать живой процесс. |
+| **P1** | Проверен dev Electron, но не запуск подписанного `.app`/AppImage после упаковки. | Добавить packaged artifact smoke, macOS arm64/x64 matrix, signing/notarization gate. |
+| **P2** | Полная EN-локализация статического HTML не завершена; пользователь указал, что языки не критичны. | Возвращаться только при реальной потребности, не блокировать функциональный roadmap. |
+| **P2** | Graph UI heavy chunk и release-size остаются крупными. | Ввести lazy-chunk и artifact size budgets после packaged smoke. |
+| **P2** | Нет автоматического dependency update/audit gate. | Добавить Dependabot/Renovate и dependency-review отдельным security этапом. |
+| **P3** | `main.js` и крупные view-файлы остаются hotspot для сопровождения. | После стабилизации E2E постепенно выделять IPC/project/process services, без big-bang rewrite. |
 
-## Рекомендуемый порядок
+## Что делать дальше
 
-1. Зафиксировать текущий UX/reliability diff отдельным PR и прогнать реальный CI.
-2. Добавить Electron IPC + один packaged/e2e smoke.
-3. Закрыть watchdog upstream.
-4. Release matrix, signing, strip/size budget и artifact smoke.
-5. Завершить RU/EN, добавить CHANGELOG и dependency automation; затем оптимизировать polling/lazy chunk.
+1. Зафиксировать текущий verified batch локальным коммитом и прогнать CI без push из этой задачи.
+2. Добавить packaged Electron smoke — это главный оставшийся разрыв между «работает из исходников» и «можно раздать пользователю».
+3. Закрыть parent-watchdog через upstream.
+4. После этого заняться signing, release matrix, dependency automation и размерами артефактов.
 
-**Критерий готовности v0.1:** чистая машина → подписанный artifact → первый проект/демо → Memory online → plan → агент → verify gate → approve/reject; всё повторяется в CI без ручного терминала.
+**Критерий следующего релиза:** чистая машина → установка → Codex видит Memory/skill/hooks → первый проект → plan → agent → verify → approve/reject → перезапуск → состояние и знания сохранены; тот же путь проходит на упакованном приложении в CI.
