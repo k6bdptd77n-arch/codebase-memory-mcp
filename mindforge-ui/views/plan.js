@@ -37,6 +37,7 @@ window.Views.plan = (() => {
     $("plan-go").disabled = true;
     $("plan-status").textContent = t("plan.reading");
     $("plan-live").classList.add("on");
+    $("plan-thinking").open = true;
     $("plan-stream").textContent = "";
     $("plan-preview").classList.add("hidden");
     try {

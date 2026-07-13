@@ -10,6 +10,15 @@ const I18N = (() => {
     en: {
       "nav.board": "Board", "nav.plan": "Plan", "nav.brain": "Brain",
       "nav.metrics": "Metrics", "nav.settings": "Settings", "nav.terminal": "Terminal",
+      "shell.command": "Search or run a command", "shell.quick": "Task",
+      "shell.hideTitle": "Hide window — background work continues", "shell.workspace": "Workspace",
+      "shell.newTask": "New task", "shell.backgroundActive": "Active in background",
+      "shell.backgroundCopy": "Memory and indexing continue when this window is hidden.",
+      "shell.memory": "Memory", "shell.plan": "Plan", "shell.brain": "Brain",
+      "shell.noNotifications": "Local only · no notifications",
+      "section.board": "Current work and verification", "section.plan": "Turn an idea into verified stories",
+      "section.brain": "Project facts and previous outcomes", "section.metrics": "Evidence that the workflow is helping",
+      "section.settings": "Models, tools and interface", "section.terminal": "Direct command-line access",
       "mode.manual": "Manual", "mode.review": "Review", "mode.auto": "Auto",
       "board.empty.title": "No plan yet",
       "board.empty.hint": "Write a plan by hand — or describe a feature in «Plan» and the planner will split it up for you.",
@@ -47,6 +56,9 @@ const I18N = (() => {
       "main.badProjectName": "invalid name: letters, digits, dot, dash, space; no / or \\",
       "main.whereCreate": "Where to create “{name}”",
       "main.createHere": "Create here",
+      "background.project": "MindForge · {name}", "background.active": "Memory and indexing are active in the background",
+      "background.open": "Open MindForge", "background.hide": "Hide window",
+      "background.quit": "Quit MindForge", "background.tooltip": "MindForge — active in the background",
       "brain.unavailable": "Memory is temporarily unavailable. Switch to this tab again to retry.",
       "brain.historyUnavailable": "Could not load history.", "brain.expandFact": "Click to expand the fact",
       "brain.until": "until {date}", "brain.expandEpisode": "Click to expand the episode", "brain.today": "today",
@@ -145,6 +157,15 @@ const I18N = (() => {
     ru: {
       "nav.board": "Доска", "nav.plan": "План", "nav.brain": "Мозг",
       "nav.metrics": "Метрики", "nav.settings": "Настройки", "nav.terminal": "Терминал",
+      "shell.command": "Поиск или команда", "shell.quick": "Задача",
+      "shell.hideTitle": "Скрыть окно — фоновая работа продолжится", "shell.workspace": "Проект",
+      "shell.newTask": "Новая задача", "shell.backgroundActive": "Работает в фоне",
+      "shell.backgroundCopy": "Память и индексация продолжают работать, когда окно скрыто.",
+      "shell.memory": "Память", "shell.plan": "План", "shell.brain": "Мозг",
+      "shell.noNotifications": "Только локально · без уведомлений",
+      "section.board": "Текущая работа и проверка", "section.plan": "Превратите идею в проверяемые стори",
+      "section.brain": "Факты проекта и результаты задач", "section.metrics": "Доказательства пользы процесса",
+      "section.settings": "Модели, инструменты и интерфейс", "section.terminal": "Прямой доступ к командной строке",
       "mode.manual": "Ручной", "mode.review": "Ревью", "mode.auto": "Авто",
       "board.empty.title": "Плана нет",
       "board.empty.hint": "Составьте план вручную — или опишите фичу в «План», и планировщик разложит её сам.",
@@ -182,6 +203,9 @@ const I18N = (() => {
       "main.badProjectName": "недопустимое имя: буквы, цифры, точка, дефис, пробел; без / и \\",
       "main.whereCreate": "Где создать проект «{name}»",
       "main.createHere": "Создать здесь",
+      "background.project": "MindForge · {name}", "background.active": "Memory и индекс работают в фоне",
+      "background.open": "Открыть MindForge", "background.hide": "Скрыть окно",
+      "background.quit": "Завершить MindForge", "background.tooltip": "MindForge — работает в фоне",
       "brain.unavailable": "Память временно недоступна. Переключитесь на вкладку ещё раз, чтобы повторить.",
       "brain.historyUnavailable": "Не удалось загрузить историю.", "brain.expandFact": "Нажмите, чтобы раскрыть факт",
       "brain.until": "до {date}", "brain.expandEpisode": "Нажмите, чтобы раскрыть эпизод", "brain.today": "сегодня",
@@ -294,6 +318,10 @@ const I18N = (() => {
     for (const el of document.querySelectorAll("[data-i18n-ph]")) {
       const key = el.getAttribute("data-i18n-ph");
       el.setAttribute("placeholder", t(key));
+    }
+    for (const el of document.querySelectorAll("[data-i18n-title]")) {
+      const key = el.getAttribute("data-i18n-title");
+      el.setAttribute("title", t(key));
     }
     for (const el of document.querySelectorAll("[data-i18n-empty]")) {
       const key = el.getAttribute("data-i18n-empty");

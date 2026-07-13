@@ -6,6 +6,7 @@ const t = (key, params) => window.I18N.t(key, params);
 
 // ── tabs ─────────────────────────────────────────────────────────────────────
 const TAB_IDS = ["board", "plan", "brain", "metrics", "settings", "terminal"];
+const SECTION_DESCRIPTIONS = Object.fromEntries(TAB_IDS.map((id) => [id, `section.${id}`]));
 const SHORTCUT_MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
 document.querySelector(".palette-trigger kbd").textContent = `${SHORTCUT_MOD}K`;
 document.querySelectorAll(".tab-key").forEach((key, i) => {
@@ -28,6 +29,9 @@ function activateTab(tabId, { persist = true, focus = false } = {}) {
     view.classList.toggle("active", active);
     view.setAttribute("aria-hidden", String(!active));
   });
+
+  document.getElementById("section-title").textContent = t(`nav.${tabId}`);
+  document.getElementById("section-subtitle").textContent = t(SECTION_DESCRIPTIONS[tabId]);
 
   if (persist) localStorage.setItem("mf-active-tab", tabId);
   if (focus) next.focus();
@@ -80,6 +84,8 @@ async function refreshLayers() {
       el.classList.toggle("on", !!on && !warn);
       el.classList.toggle("warn", !!warn);
       document.getElementById(`light-${id}-v`).textContent = value;
+      const contextValue = document.getElementById(`context-${id}`);
+      if (contextValue) contextValue.textContent = value;
     };
     set("memory", !!l.memory, l.memory ? t("runtime.nodes", { count: (l.memory.nodes / 1000).toFixed(1) }) : t("runtime.offline"));
     set("procedure", !!l.procedure,
@@ -119,6 +125,7 @@ async function refreshProject() {
     const info = await window.mf.projectInfo();
     document.getElementById("title-text").textContent = "MindForge";
     projBtn.querySelector(".proj-name").textContent = info.name;
+    document.getElementById("context-project-name").textContent = info.name;
     buildProjMenu(info);
   } catch {}
 }
@@ -174,6 +181,11 @@ projMenu.addEventListener("keydown", (e) => {
   items[(current + direction + items.length) % items.length]?.focus();
 });
 document.addEventListener("click", (e) => { if (!projMenu.contains(e.target)) hideProjMenu(); });
+document.getElementById("context-project").addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (projMenu.classList.contains("hidden")) showProjMenu(); else hideProjMenu();
+});
+document.getElementById("app-hide-btn").addEventListener("click", () => window.mf.appHide());
 
 // ── new-project modal (name only; the parent folder is a native dialog in main) ──
 const projModal = document.getElementById("proj-modal");
@@ -292,6 +304,7 @@ function quickGo() {
   setTimeout(() => window.mf.ptyInput(`claude '${escaped}'\n`), 120);
 }
 document.getElementById("quick-btn").addEventListener("click", showQuick);
+document.getElementById("context-quick").addEventListener("click", showQuick);
 document.getElementById("quick-go").addEventListener("click", quickGo);
 document.getElementById("quick-cancel").addEventListener("click", hideQuick);
 quickModal.addEventListener("click", (e) => { if (e.target === quickModal) hideQuick(); });
@@ -457,11 +470,14 @@ for (const v of Object.values(window.Views)) v.init();
 window.addEventListener("mindforge-locale-changed", () => {
   refreshProject();
   refreshLayers();
+  const activeTab = document.querySelector(".tab.active")?.dataset.tab || "board";
+  document.getElementById("section-title").textContent = t(`nav.${activeTab}`);
+  document.getElementById("section-subtitle").textContent = t(SECTION_DESCRIPTIONS[activeTab]);
   for (const v of Object.values(window.Views)) if (v.refresh) v.refresh();
   if (!palette.classList.contains("hidden")) renderPal(palInput.value);
 });
 const restoredTab = localStorage.getItem("mf-active-tab");
-if (TAB_IDS.includes(restoredTab)) activateTab(restoredTab, { persist: false });
+activateTab(TAB_IDS.includes(restoredTab) ? restoredTab : "board", { persist: false });
 refreshLayers();
 let poller;
 window.mf.onChanged(() => {

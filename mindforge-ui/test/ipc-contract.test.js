@@ -49,8 +49,8 @@ test("preload IPC channels have matching main-process endpoints", () => {
     "every preload subscription must be produced by main");
 });
 
-test("critical lifecycle channels remain exposed end-to-end", () => {
+test("critical workflow and background channels remain exposed end-to-end", () => {
   const calls = bridgeCalls();
-  for (const channel of ["project-create", "plan-accept", "story-approve", "story-fail"])
+  for (const channel of ["project-create", "plan-accept", "story-approve", "story-fail", "app-hide", "app-show"])
     assert.ok(calls.invoke.has(channel), `missing critical channel: ${channel}`);
 });

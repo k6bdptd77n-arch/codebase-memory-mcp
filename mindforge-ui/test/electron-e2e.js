@@ -27,11 +27,11 @@ async function main() {
   const result = JSON.parse(fs.readFileSync(resultPath, "utf8"));
   assert.equal(code, 0, `${result.error || "Electron failed"}\n${output}`);
   assert.deepEqual({
-    ok: result.ok, created: result.created, planned: result.planned,
+    ok: result.ok, background: result.background, created: result.created, planned: result.planned,
     approved: result.approved, rejected: result.rejected, merged: result.merged,
     receipt: result.receipt, states: result.states,
   }, {
-    ok: true, created: true, planned: true, approved: true, rejected: true,
+    ok: true, background: true, created: true, planned: true, approved: true, rejected: true,
     merged: true, receipt: true, states: { G001: "complete", G002: "failed" },
   });
   process.stdout.write(`Electron E2E passed: ${JSON.stringify(result)}\n`);

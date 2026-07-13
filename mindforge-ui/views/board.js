@@ -78,7 +78,7 @@ window.Views.board = (() => {
       const st = laneState(g);
       const rt = snap.states[g.id] || {};
       const el = document.createElement("div");
-      el.className = `lane ${st}`;
+      el.className = `lane ${st}${g.id === gate ? " is-next" : ""}`;
       el.dataset.id = g.id;
       const tele = st === "running" && (rt.commits != null || rt.elapsedMin != null)
         ? `<span class="lane-tele">${esc(t("board.telemetry", { commits: rt.commits ?? 0, minutes: rt.elapsedMin ?? 0 }))}</span>` : "";
@@ -110,7 +110,10 @@ window.Views.board = (() => {
         return b;
       };
       if (st === "pending") btn(t("board.runAgent"), "primary", () => runStory(g.id));
-      if (st === "running") { btn(t("board.stop"), "red", () => stopStory(g.id)); showLog(el, g.id); }
+      if (st === "running") {
+        btn(t("board.stop"), "red", () => stopStory(g.id));
+        btn(t("board.log"), "ghost", () => toggleLog(el, g.id));
+      }
       if (st === "review") {
         btn(t("board.review"), "teal", () => openReview(g.id),
             g.id !== gate, g.id !== gate ? t("board.reviewOrder") : "");

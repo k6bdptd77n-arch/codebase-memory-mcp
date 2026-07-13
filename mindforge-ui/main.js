@@ -1,5 +1,5 @@
 "use strict";
-const { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, Tray, Menu, nativeImage } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -21,6 +21,7 @@ const { apiChatRequest } = require("./providercore");
 const { createGraphSupervisor } = require("./graphcore");
 const { atomicWriteFileSync } = require("./filecore");
 const { createAsyncMemo } = require("./pollcore");
+const { createBackgroundLifecycle } = require("./backgroundcore");
 const I18N = require("./i18n");
 const t = (k, p) => I18N.t(k, p);
 
@@ -43,6 +44,7 @@ const repo = () => projectDir;
 const fablize = () => path.join(projectDir, ".fablize");
 
 let win = null;
+let tray = null;
 let term = null;
 let graphSupervisor = null;
 const running = new Map();                                  // story id → { child, started }
@@ -600,6 +602,37 @@ function switchProject(dir, persist = true) {
   }
   indexProject(projectDir);                                  // make the Memory layer real for it
   send("project-changed", projectInfo());
+  refreshTrayMenu();
+}
+
+const background = createBackgroundLifecycle({ app, getWindow: () => win,
+  createWindow: () => { createWindow(); return win; } });
+
+function refreshTrayMenu() {
+  if (!tray) return;
+  const info = projectInfo();
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: t("background.project", { name: info.name }), enabled: false },
+    { label: t("background.active"), enabled: false },
+    { type: "separator" },
+    { label: t("background.open"), click: () => background.show() },
+    { label: t("background.hide"), click: () => background.hide() },
+    { type: "separator" },
+    { label: t("background.quit"), click: () => background.quit() },
+  ]));
+}
+
+function createTray() {
+  if (tray || SHOT || E2E) return;
+  let icon = nativeImage.createFromPath(path.join(__dirname, "build", "icon.icns"));
+  if (!icon.isEmpty()) {
+    icon = icon.resize({ width: 18, height: 18 });
+    if (process.platform === "darwin") icon.setTemplateImage(true);
+  }
+  tray = new Tray(icon);
+  tray.setToolTip(t("background.tooltip"));
+  tray.on("click", () => background.toggle());
+  refreshTrayMenu();
 }
 
 function createWindow() {
@@ -616,6 +649,7 @@ function createWindow() {
       nodeIntegration: false, sandbox: true },
   });
   win.loadFile("index.html");
+  win.on("close", (event) => background.handleWindowClose(event));
   // the window renders only local files — never open popups or navigate away
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());
@@ -649,6 +683,8 @@ function createWindow() {
     I18N.setLocale(locale);
     return { ok: true, locale: I18N.locale };
   });
+  ipcMain.handle("app-hide", () => { background.hide(); return { ok: true }; });
+  ipcMain.handle("app-show", () => { background.show(); return { ok: true }; });
   ipcMain.handle("story-run", async (_e, id) => {
     if (!okId(id)) return { ok: false, error: t("main.badStoryId") };
     if (running.has(id)) return { ok: false, error: t("main.alreadyRunning") };
@@ -835,7 +871,7 @@ function createWindow() {
 // the user's open project, recents, hooks, or git configuration.
 async function runE2ESmoke() {
   const resultPath = process.env.MINDFORGE_E2E_RESULT || path.join(os.tmpdir(), "mindforge-e2e.json");
-  const result = { ok: false, created: false, planned: false, approved: false, rejected: false };
+  const result = { ok: false, background: false, created: false, planned: false, approved: false, rejected: false };
   let parent = null;
   try {
     parent = fs.mkdtempSync(path.join(os.tmpdir(), "mindforge-e2e-project-"));
@@ -844,6 +880,18 @@ async function runE2ESmoke() {
     result.created = true;
     result.project = created.target;
     switchProject(created.target, false);
+
+    background.show();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const shown = win.isVisible() && !win.isDestroyed();
+    const hiddenByRenderer = await win.webContents.executeJavaScript("window.mf.appHide()", true);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const hidden = !win.isVisible() && !win.isDestroyed();
+    background.show();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const restored = win.isVisible() && !win.isDestroyed();
+    result.background = shown && hiddenByRenderer?.ok === true && hidden && restored;
+    if (!result.background) throw new Error("background hide/restore lifecycle failed");
 
     const stories = [
       "accept-smoke::Create accepted.txt in this project and verify it exists",
@@ -880,7 +928,7 @@ async function runE2ESmoke() {
     result.states = states;
     result.merged = fs.existsSync(path.join(repo(), "accepted.txt"));
     result.receipt = fs.existsSync(path.join(fablize(), "receipts", "G001.json"));
-    result.ok = states.G001 === "complete" && states.G002 === "failed" && result.merged && result.receipt;
+    result.ok = result.background && states.G001 === "complete" && states.G002 === "failed" && result.merged && result.receipt;
     if (!result.ok) throw new Error(`final state mismatch: ${JSON.stringify(result)}`);
   } catch (e) {
     result.error = e && (e.stack || e.message) || String(e);
@@ -916,6 +964,8 @@ app.whenReady().then(async () => {
     // dev (unpackaged): INSTALL is the real repo checkout — a sensible default, unchanged.
   }
   createWindow();
+  createTray();
 });
-app.on("before-quit", () => graphSupervisor?.stop());
-app.on("window-all-closed", () => app.quit());
+app.on("activate", () => background.show());
+app.on("before-quit", () => { background.markQuitting(); graphSupervisor?.stop(); });
+app.on("window-all-closed", () => { /* tray/background process intentionally stays alive */ });

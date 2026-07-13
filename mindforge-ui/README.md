@@ -1,7 +1,8 @@
-# MindForge Control — flight deck for the MindForge stack
+# MindForge — quiet background assistant for the MindForge stack
 
-An Electron desktop app that turns the whole system — goals plan, worktree agents,
-persistent brain, telemetry — into one mission-control surface. **It never writes
+An Electron desktop app that keeps project memory and indexing available in the
+background, with a compact editor-style surface for goals, agents, review, brain and
+telemetry. **It never writes
 state itself**: every action spawns the same fablize engines you run from a shell
 (`goals.py`, `orchestrate.py`, `brain.py`, `claude -p`), so the ledger and audit
 trail stay complete whether you drive from the GUI or the terminal.
@@ -14,14 +15,25 @@ trail stay complete whether you drive from the GUI or the terminal.
 | **Metrics** | `metrics.py --project` telemetry cards, the locked spec, latest ledger events. |
 | **Terminal** | A real PTY in the repo (type `claude` to start an interactive session). |
 
+The interface follows familiar editor patterns without copying Cursor branding or
+assets: a 48 px activity rail, a shallow project/context sidebar, one workbench, a
+command centre (`Cmd/Ctrl+K`) and a compact status bar. Board presents one primary
+next step; logs, completed work and planner thinking stay collapsed until requested.
+
 **Trust mode** (header): MANUAL merges only after your Approve click; REVIEW always
 runs the model reviewer but keeps merge manual; AUTO reviews and merges a COMPLETE
 verdict automatically. Every path uses the same verification gate — tests must pass
 in the main checkout before merge.
 
-Header lights are live: MEMORY (knowledge-graph size from the C engine), PROCEDURE
-(plan progress), BRAIN (fact count). Any change under `.fablize/` refreshes the UI
+The sidebar and status bar are live: MEMORY (knowledge-graph size from the C engine),
+PROCEDURE (plan progress), BRAIN (fact count). Any change under `.fablize/` refreshes the UI
 via `fs.watch` — agents running in worktrees move the board by themselves.
+
+Closing the window hides it; it does not stop the app. Use the tray/menu-bar item to
+open, hide or explicitly quit MindForge. Memory/indexing continue while hidden.
+System notifications are intentionally disabled: status is visible only in the app
+and tray menu. Background work observes/indexes/prepares context; agents and code
+changes still start only from an explicit user action.
 
 ## Run
 
@@ -30,6 +42,7 @@ cd mindforge-ui
 npm ci                 # electron, node-pty, xterm + native rebuild
 npm test               # project boundaries, provider HTTP, atomic files, graph lifecycle
 npm run check          # syntax validation for every process/view module
+npm run test:e2e       # real Electron: hide/restore + plan/approve/reject/merge receipt
 npm start
 npm run shot           # all tabs, palette and compact layouts → /tmp/mindforge_*.png
 ```

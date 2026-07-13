@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld("mf", {
   reviewEvidence: (id) => ipcRenderer.invoke("review-evidence", id),
   onChanged: (cb) => ipcRenderer.on("fablize-changed", () => cb()),
   setLocale: (locale) => ipcRenderer.invoke("locale-set", locale),
+  appHide: () => ipcRenderer.invoke("app-hide"),
+  appShow: () => ipcRenderer.invoke("app-show"),
 
   // brain actions
   brainRecall: (q) => ipcRenderer.invoke("brain-recall", q),

@@ -11,26 +11,29 @@
   <title>MindForge</title>
 </head>
 <body>
-  <!-- ── titlebar (тонкий, как в VS Code / Cursor) ────────────────────────── -->
+  <!-- Compact editor titlebar: project, command centre, trust mode. -->
   <div id="titlebar">
+    <span class="window-drag-space" aria-hidden="true"></span>
     <span id="title-text">MindForge</span>
     <button id="proj-btn" class="proj-btn" type="button" title="Текущий проект — нажмите, чтобы переключить"
       aria-haspopup="menu" aria-controls="proj-menu" aria-expanded="false">
-      <span class="proj-ico">▣</span><span class="proj-name">…</span><span class="proj-caret">▾</span>
+      <span class="proj-ico">◇</span><span class="proj-name">…</span><span class="proj-caret">⌄</span>
     </button>
     <div id="proj-menu" class="proj-menu hidden" role="menu"></div>
-    <button id="quick-btn" class="proj-btn quick-btn" type="button" aria-haspopup="dialog" aria-controls="quick-modal"
-      title="Быстрая задача — один агент прямо в проекте, интерактивно, без плана и доски">⚡</button>
     <button id="palette-btn" class="proj-btn palette-trigger" type="button" aria-expanded="false"
       title="Открыть палитру команд (⌘K / Ctrl+K)" aria-haspopup="dialog" aria-controls="palette">
-      <span class="palette-trigger-icon">⌕</span><span class="palette-trigger-label">Команды</span><kbd>⌘K</kbd>
+      <span class="palette-trigger-icon">⌕</span><span class="palette-trigger-label" data-i18n="shell.command">Search or run a command</span><kbd>⌘K</kbd>
     </button>
+    <button id="quick-btn" class="proj-btn quick-btn" type="button" aria-haspopup="dialog" aria-controls="quick-modal"
+      data-i18n-title="quick.title" title="Quick task"><span>＋</span><span class="quick-label" data-i18n="shell.quick">Task</span></button>
     <div class="mode-seg" role="group" aria-label="Режим доверия" title="Шкала доверия: Ручной — merge только вами; Ревью — LLM обязательно смотрит диф, merge всё равно вручную; Авто — merge сам при зелёных тестах">
       <input type="checkbox" id="autopilot" class="hidden" />
       <button id="mode-manual" type="button" class="on" data-mode="manual" data-i18n="mode.manual" aria-pressed="true">Ручной</button>
       <button id="mode-review" type="button" data-mode="review" data-i18n="mode.review" aria-pressed="false">Ревью</button>
       <button id="mode-auto" type="button" data-mode="auto" data-i18n="mode.auto" aria-pressed="false">Авто</button>
     </div>
+    <button id="app-hide-btn" class="window-action" type="button" data-i18n-title="shell.hideTitle"
+      title="Hide window — background work continues" aria-label="Hide MindForge">—</button>
   </div>
 
   <!-- первый запуск: проверка окружения вместо тихого падения при первом Run -->
@@ -41,7 +44,7 @@
   </div>
 
   <div id="shell">
-    <!-- ── sidebar: навигация как в Cursor ──────────────────────────────── -->
+    <!-- Activity rail: stable icon-only navigation, like a code editor. -->
     <aside id="sidebar">
       <nav id="tabs" role="tablist" aria-label="Разделы MindForge">
         <button class="tab active" type="button" role="tab" aria-selected="true" aria-controls="view-board" data-tab="board" title="Доска (⌘1 / Ctrl+1)"><span class="tab-ico">▤</span><span class="tab-label" data-i18n="nav.board">Доска</span><kbd class="tab-key">⌘1</kbd></button>
@@ -51,7 +54,39 @@
         <button class="tab" type="button" role="tab" aria-selected="false" aria-controls="view-settings" data-tab="settings" title="Настройки (⌘5 / Ctrl+5)"><span class="tab-ico">⚙</span><span class="tab-label" data-i18n="nav.settings">Настройки</span><kbd class="tab-key">⌘5</kbd></button>
         <button class="tab" type="button" role="tab" aria-selected="false" aria-controls="view-terminal" data-tab="terminal" title="Терминал (⌘6 / Ctrl+6)"><span class="tab-ico">❯</span><span class="tab-label" data-i18n="nav.terminal">Терминал</span><kbd class="tab-key">⌘6</kbd></button>
       </nav>
-      <div class="sidebar-bottom"></div>
+      <div class="sidebar-bottom"><span class="rail-live" title="MindForge is active in the background"></span></div>
+    </aside>
+
+    <!-- Context is intentionally shallow: one task action and honest service state. -->
+    <aside id="contextbar">
+      <div class="context-head">
+        <span class="context-kicker" data-i18n="shell.workspace">Workspace</span>
+        <span class="context-more" aria-hidden="true">•••</span>
+      </div>
+      <button id="context-project" class="context-project" type="button">
+        <span class="context-chevron">⌄</span><span id="context-project-name">…</span>
+      </button>
+      <div class="context-section">
+        <h1 id="section-title">Board</h1>
+        <p id="section-subtitle">Current work and verification</p>
+      </div>
+      <button id="context-quick" class="context-primary" type="button">
+        <span>＋</span><span data-i18n="shell.newTask">New task</span>
+      </button>
+      <div class="context-spacer"></div>
+      <div class="background-card">
+        <div class="background-head">
+          <span class="background-dot"></span>
+          <span data-i18n="shell.backgroundActive">Active in background</span>
+        </div>
+        <div class="background-copy" data-i18n="shell.backgroundCopy">Memory and indexing continue when this window is hidden.</div>
+        <div class="context-layers">
+          <span data-i18n="shell.memory">Memory</span><em id="context-memory">—</em>
+          <span data-i18n="shell.plan">Plan</span><em id="context-procedure">—</em>
+          <span data-i18n="shell.brain">Brain</span><em id="context-brain">—</em>
+        </div>
+        <div class="background-local" data-i18n="shell.noNotifications">Local only · no notifications</div>
+      </div>
     </aside>
 
     <main>
@@ -127,11 +162,11 @@
               </div>
             </div>
           </div>
-          <div class="plan-right">
-            <div class="pane-title"><span data-i18n="plan.thinking">Мышление планировщика</span> <span class="live-dot" id="plan-live"></span></div>
+          <details id="plan-thinking" class="plan-right">
+            <summary class="pane-title"><span data-i18n="plan.thinking">Мышление планировщика</span> <span class="live-dot" id="plan-live"></span></summary>
             <pre id="plan-stream" class="stream" data-i18n-empty="plan.streamHint"
               data-empty="Здесь появятся ход планирования и решения планировщика."></pre>
-          </div>
+          </details>
         </div>
       </section>
 
